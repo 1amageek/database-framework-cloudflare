@@ -1,0 +1,19 @@
+{
+  "name": "@database-framework-cloudflare/cloudflare-database-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "swiftly run swift build --package-path ../.. --swift-sdk swift-6.3.1-RELEASE_wasm --product CloudflareDatabaseRuntime -c release +6.3.1",
+    "prepare:wasm": "node scripts/prepare-wasm.mjs",
+    "test": "npm run build:wasm && npm run prepare:wasm && node --test",
+    "smoke:e2e": "npm run build:wasm && npm run prepare:wasm && node scripts/smoke-e2e.mjs",
+    "smoke:local:persistence": "npm run build:wasm && npm run prepare:wasm && node scripts/smoke-local-persistence.mjs",
+    "dev": "npm run build:wasm && npm run prepare:wasm && wrangler dev",
+    "deploy": "npm run build:wasm && npm run prepare:wasm && wrangler deploy",
+    "deploy:dry-run": "npm run build:wasm && npm run prepare:wasm && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "4.105.0"
+  }
+}
