@@ -1,33 +1,40 @@
 import wasmModule from "./CloudflareDatabaseRuntime.wasm";
 import {
   CloudflareDatabaseHost as BaseCloudflareDatabaseHost,
-} from "./CloudflareDatabaseHost.js";
+  type CloudflareDatabaseHostEnvironment,
+} from "./CloudflareDatabaseHost";
 import {
   maxRequestBytes,
   rejectOversizedContentLength,
-} from "./DatabaseHostLimits.js";
-import { nameForScope, scopeFromRequest } from "./DatabaseScope.js";
-import { RequestAuthorizer } from "./RequestAuthorizer.js";
+} from "./DatabaseHostLimits";
+import { nameForScope, scopeFromRequest } from "./DatabaseScope";
+import { RequestAuthorizer } from "./RequestAuthorizer";
 
 const durableObjectBindingName = "DATABASE_DURABLE_OBJECT";
 
+type CloudflareDatabaseWorkerEnvironment = Env & {
+  DATABASE_ACCESS_TOKEN?: string;
+  DATABASE_WASM?: WebAssembly.Module;
+};
+
 export class CloudflareDatabaseHost extends BaseCloudflareDatabaseHost {
-  constructor(ctx, env) {
-    super(ctx, Object.assign({}, env, {
+  constructor(ctx: DurableObjectState, env: CloudflareDatabaseWorkerEnvironment) {
+    const hostEnvironment: CloudflareDatabaseHostEnvironment = Object.assign({}, env, {
       DATABASE_WASM: env?.DATABASE_WASM ?? wasmModule,
-    }));
+    });
+    super(ctx, hostEnvironment);
   }
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: CloudflareDatabaseWorkerEnvironment): Promise<Response> {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    const authorization = await new RequestAuthorizer(env?.DATABASE_ACCESS_TOKEN).authorize(request);
+    const authorization = await new RequestAuthorizer(env.DATABASE_ACCESS_TOKEN).authorize(request);
     if (!authorization.allowed) {
-      return authorization.response;
+      return authorization.response ?? new Response("Unauthorized", { status: 401 });
     }
 
     const oversizedResponse = rejectOversizedContentLength(request, maxRequestBytes(env));
@@ -35,12 +42,12 @@ export default {
       return oversizedResponse;
     }
 
-    const namespace = env?.[durableObjectBindingName];
+    const namespace = env[durableObjectBindingName];
     if (namespace === undefined || namespace === null) {
       return new Response("Cloudflare Durable Object binding is not configured", { status: 503 });
     }
 
-    let stub;
+    let stub: DurableObjectStub;
     try {
       const durableObjectName = nameForScope(scopeFromRequest(request));
       const id = namespace.idFromName(durableObjectName);
@@ -51,8 +58,8 @@ export default {
 
     return stub.fetch(request);
   },
-};
+} satisfies ExportedHandler<CloudflareDatabaseWorkerEnvironment>;
 
-function errorMessage(error) {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

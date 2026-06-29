@@ -1,11 +1,13 @@
 const bearerPrefix = "Bearer ";
 
 export class RequestAuthorizer {
-  constructor(secret) {
+  private readonly secret: string | null;
+
+  constructor(secret: unknown) {
     this.secret = normalizedSecret(secret);
   }
 
-  async authorize(request) {
+  async authorize(request: Request): Promise<AuthorizationResult> {
     if (this.secret === null) {
       return AuthorizationResult.misconfigured();
     }
@@ -26,11 +28,14 @@ export class RequestAuthorizer {
 }
 
 export class AuthorizationResult {
-  static authorized() {
+  readonly allowed: boolean;
+  readonly response: Response | null;
+
+  static authorized(): AuthorizationResult {
     return new AuthorizationResult(true, null);
   }
 
-  static unauthorized() {
+  static unauthorized(): AuthorizationResult {
     return new AuthorizationResult(false, new Response("Unauthorized", {
       status: 401,
       headers: {
@@ -39,19 +44,19 @@ export class AuthorizationResult {
     }));
   }
 
-  static misconfigured() {
+  static misconfigured(): AuthorizationResult {
     return new AuthorizationResult(false, new Response("Database access token is not configured", {
       status: 503,
     }));
   }
 
-  constructor(allowed, response) {
+  private constructor(allowed: boolean, response: Response | null) {
     this.allowed = allowed;
     this.response = response;
   }
 }
 
-function normalizedSecret(secret) {
+function normalizedSecret(secret: unknown): string | null {
   if (typeof secret !== "string") {
     return null;
   }
@@ -59,7 +64,7 @@ function normalizedSecret(secret) {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-async function constantTimeStringEqual(lhs, rhs) {
+async function constantTimeStringEqual(lhs: string, rhs: string): Promise<boolean> {
   const encoder = new TextEncoder();
   const [lhsHash, rhsHash] = await Promise.all([
     crypto.subtle.digest("SHA-256", encoder.encode(lhs)),
@@ -68,7 +73,7 @@ async function constantTimeStringEqual(lhs, rhs) {
   return constantTimeBytesEqual(new Uint8Array(lhsHash), new Uint8Array(rhsHash));
 }
 
-function constantTimeBytesEqual(lhs, rhs) {
+function constantTimeBytesEqual(lhs: Uint8Array, rhs: Uint8Array): boolean {
   let difference = lhs.length ^ rhs.length;
   const count = Math.max(lhs.length, rhs.length);
   for (let index = 0; index < count; index += 1) {

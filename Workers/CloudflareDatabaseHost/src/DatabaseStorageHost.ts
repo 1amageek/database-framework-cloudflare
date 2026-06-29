@@ -1,16 +1,22 @@
-import { DatabaseSQLiteStore } from "./DatabaseSQLiteStore.js";
-import { DatabaseStorageHostCodec } from "./DatabaseStorageHostCodec.js";
+import {
+  DatabaseSQLiteStore,
+  type SqlExecutor,
+  type TransactionSync,
+} from "./DatabaseSQLiteStore";
+import { DatabaseStorageHostCodec } from "./DatabaseStorageHostCodec";
 
 export class DatabaseStorageHost {
-  constructor(sql, transactionSync = null) {
+  private readonly store: DatabaseSQLiteStore;
+
+  constructor(sql: SqlExecutor, transactionSync: TransactionSync | null = null) {
     this.store = new DatabaseSQLiteStore(sql, transactionSync);
   }
 
-  migrate() {
+  migrate(): void {
     this.store.migrate();
   }
 
-  dispatchBytes(bytes) {
+  dispatchBytes(bytes: ArrayBuffer | ArrayBufferView): Uint8Array {
     try {
       const request = DatabaseStorageHostCodec.decodeRequest(bytes);
       const response = this.store.dispatch(request);
@@ -21,6 +27,6 @@ export class DatabaseStorageHost {
   }
 }
 
-function errorMessage(error) {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

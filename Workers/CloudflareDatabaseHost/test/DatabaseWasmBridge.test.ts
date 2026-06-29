@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { DatabaseStorageHost } from "../src/DatabaseStorageHost.js";
-import { DatabaseWasmBridge } from "../src/DatabaseWasmBridge.js";
+import { DatabaseStorageHost } from "../src/DatabaseStorageHost";
+import { DatabaseWasmBridge } from "../src/DatabaseWasmBridge";
 import {
   and,
   comparison,
   comparisonOperator,
   DatabaseWireCodec,
+  type DatabaseWireDecodedResponse,
+  type DatabaseWireEntitySchema,
+  type DatabaseWireFieldValue,
+  type DatabaseWirePredicate,
+  type DatabaseWireRecord,
+  type DatabaseWireRequest,
+  type DatabaseWireSchema,
   entitySchema,
   fieldValue,
   fieldSchema,
@@ -25,8 +32,8 @@ import {
   schema,
   vectorMetric,
   value,
-} from "../src/DatabaseWireCodec.js";
-import { NodeSqlStorage } from "./NodeSqlStorage.js";
+} from "../src/DatabaseWireCodec";
+import { NodeSqlStorage } from "./NodeSqlStorage";
 
 const wasmPath = fileURLToPath(new URL("../src/CloudflareDatabaseRuntime.wasm", import.meta.url));
 
@@ -51,7 +58,7 @@ test("Swift WASM runtime executes DatabaseWire through host SQLite storage", asy
     id: "b",
   }));
   assert.equal(getResponse.status, responseStatus.ok);
-  assert.equal(getResponse.record.id, "b");
+  assert.equal(requireRecord(getResponse).id, "b");
 
   const queryResponse = decode(await dispatch(bridge, {
     operation: requestOperation.query,
@@ -138,19 +145,23 @@ test("Swift WASM runtime executes DatabaseWire through host SQLite storage", asy
   assert.equal(vectorResponse.status, responseStatus.ok);
   assert.equal(vectorResponse.payload, responsePayload.scoredRecords);
   assert.deepEqual(vectorResponse.records.map((item) => item.record.id), ["near", "middle"]);
-  assert.equal(vectorResponse.records[0].distance, 0);
-  assert.ok(vectorResponse.records[1].distance > 0);
+  assert.equal(requireScoredRecord(vectorResponse, 0).distance, 0);
+  assert.ok(requireScoredRecord(vectorResponse, 1).distance > 0);
 });
 
-async function dispatch(bridge, request) {
+async function dispatch(bridge: DatabaseWasmBridge, request: DatabaseWireRequest): Promise<Uint8Array> {
   return bridge.dispatch(DatabaseWireCodec.encodeRequest(request));
 }
 
-function decode(bytes) {
+function decode(bytes: Uint8Array): DatabaseWireDecodedResponse {
   return DatabaseWireCodec.decodeResponse(bytes);
 }
 
-async function queryIds(bridge, predicate, limit = 10) {
+async function queryIds(
+  bridge: DatabaseWasmBridge,
+  predicate: DatabaseWirePredicate | null,
+  limit = 10
+): Promise<string[]> {
   const response = decode(await dispatch(bridge, {
     operation: requestOperation.query,
     query: {
@@ -164,14 +175,14 @@ async function queryIds(bridge, predicate, limit = 10) {
   return response.records.map((item) => item.id);
 }
 
-function put(item) {
+function put(item: DatabaseWireRecord): DatabaseWireRequest {
   return {
     operation: requestOperation.putRecord,
     record: item,
   };
 }
 
-function articleSchema() {
+function articleSchema(): DatabaseWireSchema {
   return schema([
     entitySchema("Article", 1, [
       fieldSchema("status", fieldType.string, 1),
@@ -187,7 +198,13 @@ function articleSchema() {
   ]);
 }
 
-function article(id, status, score, title, tags) {
+function article(
+  id: string,
+  status: string,
+  score: number,
+  title: string,
+  tags: string[]
+): DatabaseWireRecord {
   return record("Article", id, [
     namedValue("status", value(fieldValue.string, status)),
     namedValue("score", value(fieldValue.int64, score)),
@@ -199,7 +216,7 @@ function article(id, status, score, title, tags) {
   ]);
 }
 
-function vectorDocumentSchema() {
+function vectorDocumentSchema(): DatabaseWireSchema {
   return schema([
     entitySchema("Document", 1, [
       fieldSchema("status", fieldType.string, 1),
@@ -214,10 +231,32 @@ function vectorDocumentSchema() {
   ]);
 }
 
-function vectorDocument(id, status, title, embedding) {
+function vectorDocument(
+  id: string,
+  status: string,
+  title: string,
+  embedding: number[]
+): DatabaseWireRecord {
   return record("Document", id, [
     namedValue("status", value(fieldValue.string, status)),
     namedValue("title", value(fieldValue.string, title)),
-    namedValue("embedding", value(fieldValue.array, embedding.map((scalar) => value(fieldValue.double, scalar)))),
+    namedValue("embedding", value(fieldValue.array, embedding.map((scalar: number) => value(fieldValue.double, scalar)))),
   ]);
+}
+
+function requireRecord(response: DatabaseWireDecodedResponse): DatabaseWireRecord {
+  assert.notEqual(response.record, null);
+  if (response.record === null) {
+    throw new Error("Expected record response");
+  }
+  return response.record;
+}
+
+function requireScoredRecord(response: DatabaseWireDecodedResponse, index: number) {
+  const item = response.records[index];
+  assert.notEqual(item, undefined);
+  if (item === undefined) {
+    throw new Error("Expected scored record");
+  }
+  return item;
 }

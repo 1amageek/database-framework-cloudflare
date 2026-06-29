@@ -65,7 +65,7 @@ flowchart TB
   end
 
   subgraph Worker["Workers/CloudflareDatabaseHost"]
-    HTTP["CloudflareDatabaseWorker.js"]
+    HTTP["CloudflareDatabaseWorker.ts"]
     Auth["RequestAuthorizer"]
     Scope["databaseID / tenantID / workspaceID"]
     Bridge["DatabaseWasmBridge"]
@@ -110,7 +110,7 @@ let database = CloudflareDatabaseWireRuntime()
 let response = try database.execute(.query(request))
 ```
 
-`DatabaseWire` is the stable boundary for the WASM runtime. The runtime sends storage reads, scans, and commits through the imported `database_host.dispatch` function, which the JavaScript Worker host implements against Durable Object SQLite.
+`DatabaseWire` is the stable boundary for the WASM runtime. The runtime sends storage reads, scans, and commits through the imported `database_host.dispatch` function, which the TypeScript Worker host implements against Durable Object SQLite.
 
 ## Native Host Configuration
 
@@ -272,7 +272,7 @@ Requirements:
 |---|---|
 | Swift 6.3.1 | Native and WASM builds |
 | Swift SDK `swift-6.3.1-RELEASE_wasm` | WebAssembly build target |
-| Node.js | Worker tests and smoke scripts |
+| Node.js | TypeScript Worker tests and smoke scripts |
 | Wrangler 4.105.0 | Cloudflare Worker local/dev/deploy flow |
 
 Install Worker dependencies:
@@ -309,7 +309,7 @@ The Worker tests build the Swift WASM runtime, copy the generated `.wasm` into `
 | Command | Coverage |
 |---|---|
 | `swift test` | Swift storage host codec, configuration, runtime query behavior |
-| `npm test` | JS host limits, authorization, SQLite host, Swift WASM bridge |
+| `npm test` | TypeScript host limits, authorization, SQLite host, Swift WASM bridge |
 | `npm run smoke:e2e` | Wrangler local Worker, authorization, scope routing, query matrix, vector query, malformed request envelope |
 | `npm run smoke:local:persistence` | Durable Object SQLite persistence across local Wrangler restart |
 | `npm run deploy:dry-run` | Cloudflare bundle generation and binding validation |

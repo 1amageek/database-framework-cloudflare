@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import {
   and,
   comparison,
   comparisonOperator,
   DatabaseWireCodec,
+  type DatabaseWireDecodedResponse,
+  type DatabaseWirePredicate,
+  type DatabaseWireRecord,
+  type DatabaseWireRequest,
+  type DatabaseWireSchema,
   entitySchema,
   fieldValue,
   fieldSchema,
@@ -24,12 +31,22 @@ import {
   schema,
   vectorMetric,
   value,
-} from "../src/DatabaseWireCodec.js";
+} from "../src/DatabaseWireCodec";
+
+type WranglerProcess = ChildProcessByStdio<null, Readable, Readable> & {
+  output: string;
+};
+
+type SmokeScope = {
+  databaseID: string;
+  tenantID: string;
+  workspaceID: string;
+};
 
 const port = Number(process.env.CLOUDFLARE_DATABASE_E2E_PORT ?? "18788");
 const origin = `http://127.0.0.1:${port}`;
-const packageRoot = new URL("..", import.meta.url);
-const devVarsPath = join(packageRoot.pathname, ".dev.vars");
+const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+const devVarsPath = join(packageRoot, ".dev.vars");
 const accessToken = "local-smoke-token";
 const durableScope = {
   databaseID: `database-e2e-${Date.now()}`,
@@ -37,7 +54,7 @@ const durableScope = {
   workspaceID: "workspace-main",
 };
 
-let wrangler = null;
+let wrangler: WranglerProcess | null = null;
 
 try {
   writeDevVars();
@@ -56,8 +73,8 @@ try {
   removeDevVars();
 }
 
-function startWrangler() {
-  const localWrangler = join(packageRoot.pathname, "node_modules", ".bin", "wrangler");
+function startWrangler(): WranglerProcess {
+  const localWrangler = join(packageRoot, "node_modules", ".bin", "wrangler");
   const command = existsSync(localWrangler) ? localWrangler : "npx";
   const args = existsSync(localWrangler)
     ? ["dev", "--port", String(port), "--ip", "127.0.0.1"]
@@ -66,7 +83,7 @@ function startWrangler() {
     cwd: packageRoot,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
-  });
+  }) as WranglerProcess;
   child.output = "";
   child.stdout.on("data", (chunk) => {
     child.output = trimOutput(child.output + chunk.toString());
@@ -77,7 +94,10 @@ function startWrangler() {
   return child;
 }
 
-async function waitForWorker() {
+async function waitForWorker(): Promise<void> {
+  if (wrangler === null) {
+    throw new Error("wrangler dev was not started");
+  }
   const startedAt = Date.now();
   while (Date.now() - startedAt < 60_000) {
     if (wrangler.exitCode !== null) {
@@ -123,7 +143,7 @@ async function assertWireRuntime() {
   }, durableScope);
   assert.equal(getResponse.status, responseStatus.ok);
   assert.equal(getResponse.payload, responsePayload.record);
-  assert.equal(getResponse.record.id, "b");
+  assert.equal(requireRecord(getResponse).id, "b");
 
   const queryResponse = await dispatch({
     operation: requestOperation.query,
@@ -283,8 +303,8 @@ async function assertVectorSearch() {
   assert.equal(response.status, responseStatus.ok);
   assert.equal(response.payload, responsePayload.scoredRecords);
   assert.deepEqual(response.records.map((item) => item.record.id), ["near", "middle"]);
-  assert.equal(response.records[0].distance, 0);
-  assert.ok(response.records[1].distance > 0);
+  assert.equal(requireScoredRecord(response, 0).distance, 0);
+  assert.ok(requireScoredRecord(response, 1).distance > 0);
 }
 
 async function assertInvalidRequestEnvelope() {
@@ -293,7 +313,7 @@ async function assertInvalidRequestEnvelope() {
   assert.equal(decoded.status, responseStatus.invalidRequest);
 }
 
-async function put(item, scope) {
+async function put(item: DatabaseWireRecord, scope: SmokeScope): Promise<void> {
   const response = await dispatch({
     operation: requestOperation.putRecord,
     record: item,
@@ -302,7 +322,7 @@ async function put(item, scope) {
   assert.equal(response.payload, responsePayload.empty);
 }
 
-async function applySchema(value, scope) {
+async function applySchema(value: DatabaseWireSchema, scope: SmokeScope): Promise<void> {
   const response = await dispatch({
     operation: requestOperation.applySchema,
     schema: value,
@@ -311,13 +331,17 @@ async function applySchema(value, scope) {
   assert.equal(response.payload, responsePayload.empty);
 }
 
-async function dispatch(request, scope) {
+async function dispatch(request: DatabaseWireRequest, scope: SmokeScope): Promise<DatabaseWireDecodedResponse> {
   return DatabaseWireCodec.decodeResponse(
     await postBytes(DatabaseWireCodec.encodeRequest(request), scope)
   );
 }
 
-async function queryIDs(scope, predicate, limit) {
+async function queryIDs(
+  scope: SmokeScope,
+  predicate: DatabaseWirePredicate | null,
+  limit: number
+): Promise<string[]> {
   const response = await dispatch({
     operation: requestOperation.query,
     query: {
@@ -331,11 +355,11 @@ async function queryIDs(scope, predicate, limit) {
   return response.records.map((item) => item.id);
 }
 
-async function postBytes(bytes, scope) {
+async function postBytes(bytes: Uint8Array, scope: SmokeScope): Promise<Uint8Array> {
   const response = await fetchWithTimeout(origin, {
     method: "POST",
     headers: scopeHeaders(scope),
-    body: bytes,
+    body: toArrayBuffer(bytes),
   }, 10_000);
   if (response.status !== 200) {
     assert.equal(response.status, 200, await response.text());
@@ -343,7 +367,7 @@ async function postBytes(bytes, scope) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-function scopeHeaders(scope) {
+function scopeHeaders(scope: SmokeScope): HeadersInit {
   return {
     "content-type": "application/octet-stream",
     "authorization": `Bearer ${accessToken}`,
@@ -365,7 +389,13 @@ function removeDevVars() {
   rmSync(devVarsPath, { force: true });
 }
 
-function article(id, status, score, title, tags) {
+function article(
+  id: string,
+  status: string,
+  score: number,
+  title: string,
+  tags: string[]
+): DatabaseWireRecord {
   return record("Article", id, [
     namedValue("status", value(fieldValue.string, status)),
     namedValue("score", value(fieldValue.int64, score)),
@@ -374,7 +404,7 @@ function article(id, status, score, title, tags) {
   ]);
 }
 
-function articleSchema() {
+function articleSchema(): DatabaseWireSchema {
   return schema([
     entitySchema("Article", 1, [
       fieldSchema("status", fieldType.string, 1),
@@ -387,7 +417,12 @@ function articleSchema() {
   ]);
 }
 
-function vectorDocument(id, status, title, embedding) {
+function vectorDocument(
+  id: string,
+  status: string,
+  title: string,
+  embedding: number[]
+): DatabaseWireRecord {
   return record("Document", id, [
     namedValue("status", value(fieldValue.string, status)),
     namedValue("title", value(fieldValue.string, title)),
@@ -395,7 +430,7 @@ function vectorDocument(id, status, title, embedding) {
   ]);
 }
 
-function vectorDocumentSchema() {
+function vectorDocumentSchema(): DatabaseWireSchema {
   return schema([
     entitySchema("Document", 1, [
       fieldSchema("status", fieldType.string, 1),
@@ -410,7 +445,7 @@ function vectorDocumentSchema() {
   ]);
 }
 
-async function fetchWithTimeout(url, init, timeout) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeout: number): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
@@ -423,7 +458,7 @@ async function fetchWithTimeout(url, init, timeout) {
   }
 }
 
-async function stopWrangler(child) {
+async function stopWrangler(child: WranglerProcess | null): Promise<void> {
   if (child === null || child.exitCode !== null) {
     return;
   }
@@ -438,7 +473,28 @@ async function stopWrangler(child) {
   ]);
 }
 
-function trimOutput(output) {
+function trimOutput(output: string): string {
   const maxLength = 12_000;
   return output.length <= maxLength ? output : output.slice(output.length - maxLength);
+}
+
+function requireRecord(response: DatabaseWireDecodedResponse): DatabaseWireRecord {
+  assert.notEqual(response.record, null);
+  if (response.record === null) {
+    throw new Error("Expected record response");
+  }
+  return response.record;
+}
+
+function requireScoredRecord(response: DatabaseWireDecodedResponse, index: number) {
+  const item = response.records[index];
+  assert.notEqual(item, undefined);
+  if (item === undefined) {
+    throw new Error("Expected scored record");
+  }
+  return item;
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }

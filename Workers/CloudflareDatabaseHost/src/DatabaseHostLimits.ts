@@ -1,7 +1,13 @@
 export const defaultMaxRequestBytes = 4 * 1024 * 1024;
 
+export type RequestLimitEnvironment = {
+  DATABASE_MAX_REQUEST_BYTES?: string | number | null;
+};
+
 export class PayloadTooLargeError extends Error {
-  constructor(limit) {
+  readonly limit: number;
+
+  constructor(limit: number) {
     super(`Database wire request exceeds ${limit} bytes`);
     this.name = "PayloadTooLargeError";
     this.limit = limit;
@@ -15,7 +21,7 @@ export class InvalidContentLengthError extends Error {
   }
 }
 
-export function maxRequestBytes(env) {
+export function maxRequestBytes(env: RequestLimitEnvironment | null | undefined): number {
   const configured = env?.DATABASE_MAX_REQUEST_BYTES;
   if (configured === undefined || configured === null || configured === "") {
     return defaultMaxRequestBytes;
@@ -27,7 +33,7 @@ export function maxRequestBytes(env) {
   return value;
 }
 
-export function rejectOversizedContentLength(request, limit) {
+export function rejectOversizedContentLength(request: Request, limit: number): Response | null {
   const contentLength = parseContentLength(request);
   if (contentLength === null) {
     return null;
@@ -38,7 +44,7 @@ export function rejectOversizedContentLength(request, limit) {
   return contentLength > limit ? payloadTooLargeResponse(limit) : null;
 }
 
-export async function readBoundedRequestBytes(request, limit) {
+export async function readBoundedRequestBytes(request: Request, limit: number): Promise<Uint8Array> {
   const contentLength = parseContentLength(request);
   if (contentLength instanceof InvalidContentLengthError) {
     throw contentLength;
@@ -51,7 +57,7 @@ export async function readBoundedRequestBytes(request, limit) {
   }
 
   const reader = request.body.getReader();
-  const chunks = [];
+  const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     while (true) {
@@ -80,7 +86,7 @@ export async function readBoundedRequestBytes(request, limit) {
   return bytes;
 }
 
-export function payloadTooLargeResponse(limit) {
+export function payloadTooLargeResponse(limit: number): Response {
   return new Response(`Database wire request exceeds ${limit} bytes`, { status: 413 });
 }
 
@@ -88,7 +94,7 @@ export function invalidContentLengthResponse() {
   return new Response("Invalid Content-Length", { status: 400 });
 }
 
-function parseContentLength(request) {
+function parseContentLength(request: Request): number | InvalidContentLengthError | null {
   const header = request.headers.get("content-length");
   if (header === null) {
     return null;
@@ -100,7 +106,7 @@ function parseContentLength(request) {
   return value;
 }
 
-async function cancelReader(reader) {
+async function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
   try {
     await reader.cancel();
   } catch {

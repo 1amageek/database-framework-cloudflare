@@ -1,8 +1,14 @@
-import { encodeBase64URL } from "./DatabaseBase64URL.js";
+import { encodeBase64URL } from "./DatabaseBase64URL";
 
 const namePrefix = "database-framework/cfdo/v1";
 
-export function scopeFromRequest(request) {
+export type DatabaseScope = {
+  databaseID: string;
+  tenantID: string | null;
+  workspaceID: string | null;
+};
+
+export function scopeFromRequest(request: Request): DatabaseScope {
   return {
     databaseID: requiredHeader(request, "x-database-id", "main"),
     tenantID: optionalHeader(request, "x-tenant-id"),
@@ -10,7 +16,7 @@ export function scopeFromRequest(request) {
   };
 }
 
-export function nameForScope(scope) {
+export function nameForScope(scope: DatabaseScope): string {
   const parts = [
     namePrefix,
     "database",
@@ -25,7 +31,7 @@ export function nameForScope(scope) {
   return parts.join("/");
 }
 
-function requiredHeader(request, name, fallback) {
+function requiredHeader(request: Request, name: string, fallback: string): string {
   const value = request.headers.get(name) ?? fallback;
   if (value.length === 0) {
     throw new Error(`${name} must not be empty`);
@@ -33,7 +39,7 @@ function requiredHeader(request, name, fallback) {
   return value;
 }
 
-function optionalHeader(request, name) {
+function optionalHeader(request: Request, name: string): string | null {
   const value = request.headers.get(name);
   if (value === null || value.length === 0) {
     return null;

@@ -1,20 +1,40 @@
-import { compareBytes } from "./DatabaseByteOrdering.js";
+import { compareBytes } from "./DatabaseByteOrdering";
 import {
+  type DatabaseKeyValueRow,
+  type StorageCommitRequest,
   storageOperation,
+  type StorageReadResponse,
+  type StorageRequest,
+  type StorageScanRequest,
+  type StorageScanResponse,
+  type StorageSuccessResponse,
+  type StorageWrite,
   storageWriteOperation,
-} from "./DatabaseStorageHostCodec.js";
+} from "./DatabaseStorageHostCodec";
 
 const schemaVersion = 1;
 const defaultScanBatchLimit = 1024;
 
+export type SqlBinding = Uint8Array | string | number | null;
+export type SqlRow = Record<string, unknown>;
+export type SqlCursor = SqlRow[] | Iterable<SqlRow> | { toArray(): SqlRow[] } | null | undefined;
+export type SqlExecutor = {
+  exec(statement: string, ...bindings: SqlBinding[]): SqlCursor;
+};
+export type TransactionSync = <Result>(callback: () => Result) => Result;
+
 export class DatabaseSQLiteStore {
-  constructor(sql, transactionSync = null) {
+  private readonly sql: SqlExecutor;
+  private readonly transactionSync: TransactionSync;
+  private initialized: boolean;
+
+  constructor(sql: SqlExecutor, transactionSync: TransactionSync | null = null) {
     this.sql = sql;
     this.transactionSync = transactionSync ?? ((callback) => callback());
     this.initialized = false;
   }
 
-  dispatch(request) {
+  dispatch(request: StorageRequest): StorageSuccessResponse {
     switch (request.operation) {
       case storageOperation.read:
         return this.read(request.key);
@@ -22,12 +42,10 @@ export class DatabaseSQLiteStore {
         return this.scan(request);
       case storageOperation.commit:
         return this.commit(request.writes);
-      default:
-        throw new Error(`Unknown storage operation ${request.operation}`);
     }
   }
 
-  read(key) {
+  read(key: Uint8Array): StorageReadResponse {
     this.requireInitialized();
     const row = this.first("SELECT value FROM database_kv WHERE key = ?", key);
     return {
@@ -36,7 +54,7 @@ export class DatabaseSQLiteStore {
     };
   }
 
-  scan(request) {
+  scan(request: StorageScanRequest): StorageScanResponse {
     this.requireInitialized();
     if (compareBytes(request.begin, request.end) >= 0) {
       return {
@@ -53,7 +71,7 @@ export class DatabaseSQLiteStore {
     const bindings = limit === null
       ? [request.begin, request.end]
       : [request.begin, request.end, limit];
-    const rows = this.all(statement, ...bindings).map((row) => ({
+    const rows: DatabaseKeyValueRow[] = this.all(statement, ...bindings).map((row) => ({
       key: toBytes(row.key),
       value: toBytes(row.value),
     }));
@@ -64,7 +82,7 @@ export class DatabaseSQLiteStore {
     };
   }
 
-  commit(writes) {
+  commit(writes: StorageCommitRequest["writes"]): StorageSuccessResponse {
     return this.transactionSync(() => {
       this.requireInitialized();
       for (const write of writes) {
@@ -75,8 +93,6 @@ export class DatabaseSQLiteStore {
           case storageWriteOperation.clear:
             this.exec("DELETE FROM database_kv WHERE key = ?", write.key);
             break;
-          default:
-            throw new Error(`Unknown storage write operation ${write.tag}`);
         }
       }
       return {
@@ -85,7 +101,7 @@ export class DatabaseSQLiteStore {
     });
   }
 
-  migrate() {
+  migrate(): void {
     return this.transactionSync(() => {
       this.exec(
         "CREATE TABLE IF NOT EXISTS _sql_schema_migrations(id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))"
@@ -113,34 +129,42 @@ export class DatabaseSQLiteStore {
     });
   }
 
-  requireInitialized() {
+  requireInitialized(): void {
     if (!this.initialized) {
       throw new Error("Database Durable Object storage is not initialized");
     }
   }
 
-  first(statement, ...bindings) {
+  first(statement: string, ...bindings: SqlBinding[]): SqlRow | null {
     const rows = this.all(statement, ...bindings);
-    return rows.length === 0 ? null : rows[0];
+    return rows[0] ?? null;
   }
 
-  all(statement, ...bindings) {
+  all(statement: string, ...bindings: SqlBinding[]): SqlRow[] {
     const cursor = this.sql.exec(statement, ...bindings);
     if (Array.isArray(cursor)) {
       return cursor;
     }
-    if (typeof cursor?.toArray === "function") {
+    if (hasToArray(cursor)) {
       return cursor.toArray();
     }
-    return Array.from(cursor ?? []);
+    if (cursor === null || cursor === undefined) {
+      return [];
+    }
+    return Array.from(cursor);
   }
 
-  exec(statement, ...bindings) {
+  exec(statement: string, ...bindings: SqlBinding[]): void {
     this.sql.exec(statement, ...bindings);
   }
 }
 
-function boundedLimit(limit) {
+function hasToArray(cursor: SqlCursor): cursor is { toArray(): SqlRow[] } {
+  return typeof cursor === "object" && cursor !== null && "toArray" in cursor
+    && typeof cursor.toArray === "function";
+}
+
+function boundedLimit(limit: number): number | null {
   if (!Number.isInteger(limit)) {
     return defaultScanBatchLimit;
   }
@@ -150,7 +174,7 @@ function boundedLimit(limit) {
   return Math.min(limit, defaultScanBatchLimit);
 }
 
-function toBytes(value) {
+function toBytes(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) {
     return new Uint8Array(value);
   }

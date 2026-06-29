@@ -5,7 +5,7 @@ import {
   PayloadTooLargeError,
   readBoundedRequestBytes,
   rejectOversizedContentLength,
-} from "../src/DatabaseHostLimits.js";
+} from "../src/DatabaseHostLimits";
 
 test("bounded request reader accepts payloads within the configured limit", async () => {
   const bytes = await readBoundedRequestBytes(new Request("https://database.local", {
@@ -39,10 +39,11 @@ test("bounded request reader cancels the stream after exceeding the limit", asyn
   });
 
   await assert.rejects(
-    readBoundedRequestBytes({
-      headers: new Headers(),
+    readBoundedRequestBytes(new Request("https://database.local", {
+      method: "POST",
       body: stream,
-    }, 3),
+      duplex: "half",
+    } as RequestInit), 3),
     PayloadTooLargeError
   );
   assert.equal(canceled, true);
@@ -62,8 +63,8 @@ test("content length guard rejects invalid and oversized lengths", () => {
     },
   }), 3);
 
-  assert.equal(invalid.status, 400);
-  assert.equal(oversized.status, 413);
+  assert.equal(invalid?.status, 400);
+  assert.equal(oversized?.status, 413);
 });
 
 test("bounded request reader rejects invalid content length", async () => {

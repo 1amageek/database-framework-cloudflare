@@ -1,6 +1,6 @@
 # Cloudflare Database Host
 
-This package runs the `DatabaseWire` runtime inside a Cloudflare Worker and stores key-value rows in Durable Object SQLite.
+This package runs the Swift `DatabaseWire` runtime as WASM inside a Cloudflare Worker and stores key-value rows in Durable Object SQLite. The Cloudflare host layer is implemented in TypeScript.
 
 ```mermaid
 flowchart LR
@@ -51,6 +51,7 @@ Every `POST` request must include:
 
 ```bash
 npm install
+npm run typecheck
 npm test
 npm run smoke:e2e
 npm run smoke:local:persistence
