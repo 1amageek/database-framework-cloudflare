@@ -18,9 +18,13 @@ let package = Package(
         .executable(name: "CloudflareDatabaseRuntime", targets: ["CloudflareDatabaseRuntime"]),
     ],
     dependencies: [
-        .package(path: "../database-framework", traits: []),
-        .package(path: "../database-kit"),
-        .package(path: "../storage-kit"),
+        .package(
+            url: "https://github.com/1amageek/database-framework.git",
+            from: "26.0629.0",
+            traits: []
+        ),
+        .package(url: "https://github.com/1amageek/database-kit.git", from: "26.0629.0"),
+        .package(url: "https://github.com/1amageek/storage-kit.git", from: "26.0629.0"),
     ],
     targets: [
         .target(

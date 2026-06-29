@@ -21,20 +21,20 @@ flowchart LR
 | Area | Status |
 |---|---|
 | Repository | Public source repository |
-| Swift package | Development package |
-| Dependencies | Local path dependencies while the ecosystem is under active development |
+| Swift package | Tagged release package |
+| Dependencies | GitHub URL dependencies pinned to released ecosystem versions |
 | Cloudflare Worker | Local E2E and dry-run validated |
-| Production release | Requires tagged dependency switch and staging deploy validation |
+| Production release | Ready for dependency-consistent release; staging deploy validation remains environment-specific |
 
-The current `Package.swift` intentionally references adjacent local checkouts:
+The current `Package.swift` references released ecosystem packages:
 
 ```swift
-.package(path: "../database-framework")
-.package(path: "../database-kit")
-.package(path: "../storage-kit")
+.package(url: "https://github.com/1amageek/database-framework.git", from: "26.0629.0", traits: [])
+.package(url: "https://github.com/1amageek/database-kit.git", from: "26.0629.0")
+.package(url: "https://github.com/1amageek/storage-kit.git", from: "26.0629.0")
 ```
 
-This keeps all related packages testable together during development. Before a tagged release, these dependencies should be changed to GitHub URL dependencies pinned to released versions.
+Use adjacent local checkouts only while developing changes across the ecosystem before tagging.
 
 ## Package Responsibilities
 
@@ -349,9 +349,9 @@ Before tagging a production release:
 | Requirement | Status |
 |---|---|
 | Public repository | Done |
-| Local path dependencies replaced with tagged GitHub dependencies | Required |
-| `database-kit`, `database-framework`, and `storage-kit` tags fixed | Required |
-| Worker package version policy decided | Required |
+| Local path dependencies replaced with tagged GitHub dependencies | Done |
+| `database-kit`, `database-framework`, and `storage-kit` tags fixed | Done |
+| Worker package version policy decided | CalVer, aligned with database-framework ecosystem |
 | Cloudflare staging deployment validated | Required |
 | README commands re-run from a clean clone | Required |
 
