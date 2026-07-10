@@ -1,5 +1,5 @@
-import { DatabaseBinaryReader } from "./DatabaseBinaryReader";
-import { DatabaseBinaryWriter } from "./DatabaseBinaryWriter";
+import { DatabaseBinaryReader } from "../src/DatabaseBinaryReader";
+import { DatabaseBinaryWriter } from "../src/DatabaseBinaryWriter";
 
 export const databaseWireProtocolVersion = 2;
 export const requestOperation = Object.freeze({
@@ -180,15 +180,57 @@ export type DatabaseWireScoredRecord = {
   distance: number;
 };
 
-export type DatabaseWireDecodedRecord = DatabaseWireRecord & DatabaseWireScoredRecord;
-
-export type DatabaseWireDecodedResponse = {
+export type DatabaseWireFailureResponse = {
   status: number;
-  message: string | null;
-  payload: number | null;
-  record: DatabaseWireRecord | null;
-  records: DatabaseWireDecodedRecord[];
+  message: string;
+  payload: null;
+  record: null;
+  records: [];
+  scoredRecords: [];
 };
+
+export type DatabaseWireEmptyResponse = {
+  status: typeof responseStatus.ok;
+  message: null;
+  payload: typeof responsePayload.empty;
+  record: null;
+  records: [];
+  scoredRecords: [];
+};
+
+export type DatabaseWireRecordResponse = {
+  status: typeof responseStatus.ok;
+  message: null;
+  payload: typeof responsePayload.record;
+  record: DatabaseWireRecord | null;
+  records: [];
+  scoredRecords: [];
+};
+
+export type DatabaseWireRecordsResponse = {
+  status: typeof responseStatus.ok;
+  message: null;
+  payload: typeof responsePayload.records;
+  record: null;
+  records: DatabaseWireRecord[];
+  scoredRecords: [];
+};
+
+export type DatabaseWireScoredRecordsResponse = {
+  status: typeof responseStatus.ok;
+  message: null;
+  payload: typeof responsePayload.scoredRecords;
+  record: null;
+  records: [];
+  scoredRecords: DatabaseWireScoredRecord[];
+};
+
+export type DatabaseWireDecodedResponse =
+  | DatabaseWireFailureResponse
+  | DatabaseWireEmptyResponse
+  | DatabaseWireRecordResponse
+  | DatabaseWireRecordsResponse
+  | DatabaseWireScoredRecordsResponse;
 
 export class DatabaseWireCodec {
   static encodeRequest(request: DatabaseWireRequest): Uint8Array {
@@ -221,55 +263,58 @@ export class DatabaseWireCodec {
     validateVersion(reader.readUInt8());
     const status = reader.readUInt8();
     if (status !== responseStatus.ok) {
-      const response = {
+      const response: DatabaseWireFailureResponse = {
         status,
         message: reader.readString(),
         payload: null,
         record: null,
         records: [],
+        scoredRecords: [],
       };
-      reader.ensureFullyRead();
-      return response;
+      return finishDecodedResponse(reader, response);
     }
 
     const payload = reader.readUInt8();
-    let response: DatabaseWireDecodedResponse;
     switch (payload) {
       case responsePayload.empty:
-        response = { status, message: null, payload, record: null, records: [] };
-        break;
+        return finishDecodedResponse(reader, {
+          status: responseStatus.ok,
+          message: null,
+          payload,
+          record: null,
+          records: [],
+          scoredRecords: [],
+        });
       case responsePayload.record:
-        response = {
-          status,
+        return finishDecodedResponse(reader, {
+          status: responseStatus.ok,
           message: null,
           payload,
           record: reader.readBool() ? readRecord(reader) : null,
           records: [],
-        };
-        break;
+          scoredRecords: [],
+        });
       case responsePayload.records:
-        response = {
-          status,
+        return finishDecodedResponse(reader, {
+          status: responseStatus.ok,
           message: null,
           payload,
           record: null,
           records: readRecords(reader),
-        };
-        break;
+          scoredRecords: [],
+        });
       case responsePayload.scoredRecords:
-        response = {
-          status,
+        return finishDecodedResponse(reader, {
+          status: responseStatus.ok,
           message: null,
           payload,
           record: null,
-          records: readScoredRecords(reader),
-        };
-        break;
+          records: [],
+          scoredRecords: readScoredRecords(reader),
+        });
       default:
         throw new Error(`Unknown response payload ${payload}`);
     }
-    reader.ensureFullyRead();
-    return response;
   }
 }
 
@@ -407,25 +452,33 @@ function readRecord(reader: DatabaseBinaryReader): DatabaseWireRecord {
   return { typeName, id, fields };
 }
 
-function readRecords(reader: DatabaseBinaryReader): DatabaseWireDecodedRecord[] {
+function readRecords(reader: DatabaseBinaryReader): DatabaseWireRecord[] {
   const count = reader.readCount();
-  const records: DatabaseWireDecodedRecord[] = [];
+  const records: DatabaseWireRecord[] = [];
   for (let index = 0; index < count; index += 1) {
-    records.push(readRecord(reader) as DatabaseWireDecodedRecord);
+    records.push(readRecord(reader));
   }
   return records;
 }
 
-function readScoredRecords(reader: DatabaseBinaryReader): DatabaseWireDecodedRecord[] {
+function readScoredRecords(reader: DatabaseBinaryReader): DatabaseWireScoredRecord[] {
   const count = reader.readCount();
-  const records: DatabaseWireDecodedRecord[] = [];
+  const records: DatabaseWireScoredRecord[] = [];
   for (let index = 0; index < count; index += 1) {
     records.push({
       record: readRecord(reader),
       distance: reader.readDouble(),
-    } as DatabaseWireDecodedRecord);
+    });
   }
   return records;
+}
+
+function finishDecodedResponse<T extends DatabaseWireDecodedResponse>(
+  reader: DatabaseBinaryReader,
+  response: T
+): T {
+  reader.ensureFullyRead();
+  return response;
 }
 
 function writeQuery(writer: DatabaseBinaryWriter, query: DatabaseWireQuery): void {

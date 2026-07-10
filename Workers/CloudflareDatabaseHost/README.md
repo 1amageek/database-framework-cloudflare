@@ -26,6 +26,17 @@ Requests are routed to one Durable Object instance by these headers:
 
 The Durable Object name is deterministic for the same scope, so all operations for one logical database partition are serialized by the same Durable Object.
 
+## Runtime Layout
+
+| Directory | Responsibility |
+|---|---|
+| `src/` | Production Worker, Durable Object host, SQLite storage adapter, WASI bridge, and generated WASM artifact |
+| `support/` | DatabaseWire smoke/test codec used by local verification scripts |
+| `scripts/` | Local and deploy verification workflows |
+| `test/` | Node-based unit and WASM integration tests |
+
+The `support/` codec is intentionally outside production `src/`; deployed requests are handled by Swift WASM plus the Cloudflare host bridge, not by the TypeScript test codec.
+
 ## Authorization And Limits
 
 Every `POST` request must include:

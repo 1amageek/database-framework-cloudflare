@@ -31,7 +31,7 @@ import {
   schema,
   vectorMetric,
   value,
-} from "../src/DatabaseWireCodec";
+} from "../support/DatabaseWireCodec";
 
 type WranglerProcess = ChildProcessByStdio<null, Readable, Readable> & {
   output: string;
@@ -302,7 +302,7 @@ async function assertVectorSearch() {
 
   assert.equal(response.status, responseStatus.ok);
   assert.equal(response.payload, responsePayload.scoredRecords);
-  assert.deepEqual(response.records.map((item) => item.record.id), ["near", "middle"]);
+  assert.deepEqual(response.scoredRecords.map((item) => item.record.id), ["near", "middle"]);
   assert.equal(requireScoredRecord(response, 0).distance, 0);
   assert.ok(requireScoredRecord(response, 1).distance > 0);
 }
@@ -487,7 +487,11 @@ function requireRecord(response: DatabaseWireDecodedResponse): DatabaseWireRecor
 }
 
 function requireScoredRecord(response: DatabaseWireDecodedResponse, index: number) {
-  const item = response.records[index];
+  assert.equal(response.payload, responsePayload.scoredRecords);
+  if (response.payload !== responsePayload.scoredRecords) {
+    throw new Error("Expected scored records response");
+  }
+  const item = response.scoredRecords[index];
   assert.notEqual(item, undefined);
   if (item === undefined) {
     throw new Error("Expected scored record");

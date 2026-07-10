@@ -32,7 +32,7 @@ import {
   schema,
   vectorMetric,
   value,
-} from "../src/DatabaseWireCodec";
+} from "../support/DatabaseWireCodec";
 import { NodeSqlStorage } from "./NodeSqlStorage";
 
 const wasmPath = fileURLToPath(new URL("../src/CloudflareDatabaseRuntime.wasm", import.meta.url));
@@ -144,7 +144,7 @@ test("Swift WASM runtime executes DatabaseWire through host SQLite storage", asy
   }));
   assert.equal(vectorResponse.status, responseStatus.ok);
   assert.equal(vectorResponse.payload, responsePayload.scoredRecords);
-  assert.deepEqual(vectorResponse.records.map((item) => item.record.id), ["near", "middle"]);
+  assert.deepEqual(vectorResponse.scoredRecords.map((item) => item.record.id), ["near", "middle"]);
   assert.equal(requireScoredRecord(vectorResponse, 0).distance, 0);
   assert.ok(requireScoredRecord(vectorResponse, 1).distance > 0);
 });
@@ -253,7 +253,11 @@ function requireRecord(response: DatabaseWireDecodedResponse): DatabaseWireRecor
 }
 
 function requireScoredRecord(response: DatabaseWireDecodedResponse, index: number) {
-  const item = response.records[index];
+  assert.equal(response.payload, responsePayload.scoredRecords);
+  if (response.payload !== responsePayload.scoredRecords) {
+    throw new Error("Expected scored records response");
+  }
+  const item = response.scoredRecords[index];
   assert.notEqual(item, undefined);
   if (item === undefined) {
     throw new Error("Expected scored record");

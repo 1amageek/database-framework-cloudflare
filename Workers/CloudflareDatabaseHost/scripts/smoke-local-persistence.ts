@@ -23,7 +23,7 @@ import {
   schema,
   value,
   fieldValue,
-} from "../src/DatabaseWireCodec";
+} from "../support/DatabaseWireCodec";
 
 type WranglerProcess = ChildProcessByStdio<null, Readable, Readable> & {
   output: string;
