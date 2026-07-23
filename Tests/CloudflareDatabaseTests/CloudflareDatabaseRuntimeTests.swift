@@ -50,6 +50,102 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(response.runtimeVersion == "cloudflare-runtime-verification")
     }
 
+    @Test("full runtime describes schema and persists canonical records")
+    func executesSchemaMutationAndQueryOperations() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = CloudflareDatabaseRuntime(
+            application: try RuntimeVerificationApplication(),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            jobScheduler: DiscardingDatabaseJobScheduler(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: completion
+            )
+        )
+        await runtime.start(callID: 60)
+        #expect(completion.completion(callID: 60)?.status == .success)
+
+        let schema = try await invoke(
+            SchemaDescribeOperation.self,
+            request: DatabaseEmpty(),
+            requestID: 61,
+            callID: 61,
+            runtime: runtime,
+            completion: completion
+        )
+        let entity = try #require(
+            schema.entities.first {
+                $0.name == RuntimeVerificationRecord.persistableType
+            }
+        )
+        #expect(entity.fields.map(\.name) == ["id", "title"])
+
+        let identity = RecordIdentity(
+            entity: RuntimeVerificationRecord.persistableType,
+            id: .string("record-1")
+        )
+        let mutation = try await invoke(
+            MutationExecuteOperation.self,
+            request: MutationExecuteOperation.Request(
+                input: .records([
+                    MutationExecuteOperation.Change(
+                        kind: .insert,
+                        identity: identity,
+                        fields: [
+                            DatabaseObjectField(
+                                number: 1,
+                                name: "id",
+                                value: .string("record-1")
+                            ),
+                            DatabaseObjectField(
+                                number: 2,
+                                name: "title",
+                                value: .string("Cloudflare runtime")
+                            ),
+                        ]
+                    )
+                ])
+            ),
+            requestID: 62,
+            callID: 62,
+            metadata: DatabaseRequestMetadata(
+                idempotencyKey: "runtime-record-1"
+            ),
+            runtime: runtime,
+            completion: completion
+        )
+        guard case .records(let effects) = mutation.result else {
+            Issue.record("Record mutation returned an RDF result")
+            return
+        }
+        #expect(effects.count == 1)
+        #expect(effects[0].identity == identity)
+
+        let query = try await invoke(
+            QueryExecuteOperation.self,
+            request: QueryExecuteOperation.Request(
+                input: .text(
+                    language: .sql,
+                    statement:
+                        "SELECT id, title FROM RuntimeVerificationRecord"
+                )
+            ),
+            requestID: 63,
+            callID: 63,
+            runtime: runtime,
+            completion: completion
+        )
+        guard case .rows(let page) = query else {
+            Issue.record("Record query returned a non-row result")
+            return
+        }
+        #expect(page.rows.count == 1)
+        #expect(
+            page.rows[0].values.first {
+                $0.name == "title"
+            }?.value == .string("Cloudflare runtime")
+        )
+    }
+
     @Test("startup failures can be retried and successful startup is single-use")
     func retriesStartupFailure() async throws {
         let completion = RecordingCloudflareDatabaseCompletion()
@@ -214,5 +310,39 @@ struct CloudflareDatabaseRuntimeTests {
         await jobService.resume()
         await activeAlarm.value
         #expect(completion.completion(callID: 51)?.status == .success)
+    }
+
+    private func invoke<Operation: DatabaseOperation>(
+        _ operation: Operation.Type,
+        request: Operation.Request,
+        requestID: UInt64,
+        callID: UInt32,
+        metadata: DatabaseRequestMetadata = DatabaseRequestMetadata(),
+        runtime: CloudflareDatabaseRuntime,
+        completion: RecordingCloudflareDatabaseCompletion
+    ) async throws -> Operation.Response {
+        let requestBytes = try DatabaseEnvelopeCodec.encodeRequest(
+            operation,
+            requestID: requestID,
+            metadata: metadata,
+            request: request
+        )
+        await runtime.invoke(callID: callID, requestBytes: requestBytes)
+        let completed = try #require(completion.completion(callID: callID))
+        #expect(completed.status == .success)
+        let envelope = try DatabaseEnvelopeCodec.decodeResponse(
+            completed.payload
+        )
+        let payload: DatabaseBytes
+        switch envelope.payload {
+        case .success(let response):
+            payload = response
+        case .failure(let error):
+            throw error
+        }
+        return try DatabaseEnvelopeCodec.decode(
+            Operation.Response.self,
+            from: payload
+        )
     }
 }
