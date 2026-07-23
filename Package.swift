@@ -34,6 +34,32 @@ let package = Package(
         .target(
             name: "CloudflareDatabaseTaskScheduling"
         ),
+        .executableTarget(
+            name: "CloudflareDatabaseRuntimeVerification",
+            dependencies: [
+                "CloudflareDatabase",
+                .product(name: "Core", package: "database-kit"),
+                .product(name: "DatabaseEngine", package: "database-framework"),
+                .product(name: "DatabaseRuntime", package: "database-framework"),
+                .product(name: "DatabaseServer", package: "database-framework"),
+                .product(name: "DatabaseValue", package: "database-kit"),
+                .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
+            ],
+            path: "Tests/CloudflareDatabaseRuntimeVerification",
+            swiftSettings: [
+                .enableExperimentalFeature("Extern"),
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xclang-linker",
+                    "-mexec-model=reactor",
+                    "-Xlinker",
+                    "-z",
+                    "-Xlinker",
+                    "stack-size=8388608",
+                ], .when(platforms: [.wasi])),
+            ]
+        ),
         .testTarget(
             name: "CloudflareDatabaseTests",
             dependencies: [

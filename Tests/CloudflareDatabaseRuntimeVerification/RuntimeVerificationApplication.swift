@@ -8,22 +8,11 @@ import DatabaseServer
 final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     let storageScope: CloudflareDurableObjectStorageScope
     let storageLimits = CloudflareDurableObjectLimits.default
-    let jobService: AnyDatabaseJobService
 
     init() throws {
         storageScope = try CloudflareDurableObjectStorageScope(
             databaseID: "runtime-verification"
         )
-        self.jobService = AnyDatabaseJobService(
-            UnavailableCloudflareDatabaseServices()
-        )
-    }
-
-    init<JobService: DatabaseJobService>(jobService: JobService) throws {
-        storageScope = try CloudflareDurableObjectStorageScope(
-            databaseID: "runtime-verification"
-        )
-        self.jobService = AnyDatabaseJobService(jobService)
     }
 
     func makeContainer(
@@ -32,7 +21,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         return try await DBContainer.open(
             for: Schema([RuntimeVerificationRecord.self]),
             configuration: DBConfiguration(
-                backend: .custom(storageEngine)
+                backend: .custom(storageEngine),
+                logging: .disabled
             ),
             runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(),
             security: .disabled
@@ -44,16 +34,26 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         jobScheduler: AnyDatabaseJobScheduler
     ) async throws -> DatabaseServerRuntimeConfiguration {
         _ = container
-        _ = jobScheduler
+        let jobServiceFactory = try DatabasePersistentJobServiceFactory(
+            registry: DatabaseResumableOperationRegistry(operations: []),
+            scheduler: jobScheduler,
+            clock: RealtimeDatabaseWallClock(),
+            identifierGenerator: RandomDatabaseUUIDGenerator(),
+            storageLimits: DatabasePersistentJobStorageLimits(
+                maximumStorageValueBytes: 1_048_576
+            )
+        )
         return DatabaseServerRuntimeConfiguration(
             identity: DatabaseRuntimeIdentity(
                 version: "cloudflare-runtime-verification"
             ),
-            serviceFactory: AnyDatabaseServerServiceFactory { context in
-                try await RuntimeVerificationServiceFactory(
-                    jobService: self.jobService
-                ).makeServices(context: context)
-            },
+            serviceFactory: AnyDatabaseServerServiceFactory(
+                CanonicalDatabaseServerServiceFactory(
+                    maintenanceServiceFactory:
+                        DatabaseMaintenanceOperationServiceFactory(),
+                    jobServiceFactory: jobServiceFactory
+                )
+            ),
             admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
                 UnrestrictedDatabaseOperationAdmissionPolicy()
             )

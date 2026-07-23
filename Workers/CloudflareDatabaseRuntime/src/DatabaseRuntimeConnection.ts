@@ -21,6 +21,9 @@ import { DatabaseTaskScheduler } from "./DatabaseTaskScheduler";
 import type { DatabaseRuntimeFailureHandler } from "./DatabaseRuntimeFailureHandler";
 import { DatabaseRuntimePayloadOwnership } from "./DatabaseRuntimePayloadOwnership";
 import { WasiPreview1Host } from "./WasiPreview1Host";
+import {
+  requireDatabaseRuntimeEndpoints,
+} from "./RequiredDatabaseRuntimeEndpoints";
 
 type PendingInvocation = {
   succeed(bytes: Uint8Array): void;
@@ -103,40 +106,45 @@ export class DatabaseRuntimeConnection {
         program: runtimeProgram,
         wasi: wasiAdapter,
         registerRuntimeServices: (runtimeServices) => {
-        runtimeServices.storage_host = {
-          dispatch: (payloadAddress: number, byteCount: number) =>
-            connection.dispatchStorageRequest(payloadAddress, byteCount),
-        };
-        runtimeServices.database_host = {
-          complete: (
-            callID: number,
-            status: number,
-            payloadAddress: number,
-            byteCount: number
-          ) => connection.receiveCompletion(
-            callID,
-            status,
-            payloadAddress,
-            byteCount
-          ),
-        };
-        runtimeServices.database_executor = {
-          schedule: (taskID: number, delayMilliseconds: number) =>
-            connection.taskScheduler.schedule(taskID, delayMilliseconds),
-        };
-        runtimeServices.database_clock = {
-          schedule: (waitID: number, delayMilliseconds: number) =>
-            connection.clockService.schedule(
-              normalizedClockWaitID(waitID),
-              delayMilliseconds
+          runtimeServices.storage_host = {
+            dispatch: (payloadAddress: number, byteCount: number) =>
+              connection.dispatchStorageRequest(payloadAddress, byteCount),
+          };
+          runtimeServices.database_host = {
+            complete: (
+              callID: number,
+              status: number,
+              payloadAddress: number,
+              byteCount: number
+            ) => connection.receiveCompletion(
+              callID,
+              status,
+              payloadAddress,
+              byteCount
             ),
-          cancel: (waitID: number) =>
-            connection.clockService.cancel(normalizedClockWaitID(waitID)),
-        };
-        runtimeServices.database_alarm = {
-          schedule: (secondsSinceUnixEpoch: bigint, nanoseconds: number) =>
-            connection.scheduleAlarm(secondsSinceUnixEpoch, nanoseconds),
-        };
+          };
+          runtimeServices.database_executor = {
+            schedule: (taskID: number, delayMilliseconds: number) =>
+              connection.taskScheduler.schedule(taskID, delayMilliseconds),
+          };
+          runtimeServices.database_clock = {
+            schedule: (waitID: number, delayMilliseconds: number) =>
+              connection.clockService.schedule(
+                normalizedClockWaitID(waitID),
+                delayMilliseconds
+              ),
+            cancel: (waitID: number) =>
+              connection.clockService.cancel(normalizedClockWaitID(waitID)),
+          };
+          runtimeServices.database_alarm = {
+            schedule: (
+              secondsSinceUnixEpoch: bigint,
+              nanoseconds: number
+            ) => connection.scheduleAlarm(
+              secondsSinceUnixEpoch,
+              nanoseconds
+            ),
+          };
         },
       });
       connection.runtimeInstance = runtimeInstance;
@@ -672,56 +680,7 @@ export class DatabaseRuntimeConnection {
     if (this.runtimeInstance === null) {
       throw new Error("Database runtime connection is not initialized");
     }
-    const unvalidatedEndpoints = this.runtimeInstance.endpoints;
-    const reservePayloadEndpoint = unvalidatedEndpoints.database_alloc;
-    const releasePayloadEndpoint = unvalidatedEndpoints.database_dealloc;
-    const startEndpoint = unvalidatedEndpoints.database_start;
-    const invokeEndpoint = unvalidatedEndpoints.database_invoke;
-    const alarmEndpoint = unvalidatedEndpoints.database_alarm;
-    const runScheduledTaskEndpoint = unvalidatedEndpoints.database_executor_run;
-    const resumeClockWaitEndpoint = unvalidatedEndpoints.database_clock_resume;
-    const addressSpace = unvalidatedEndpoints.memory;
-    if (typeof reservePayloadEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_alloc");
-    }
-    if (typeof releasePayloadEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_dealloc");
-    }
-    if (typeof startEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_start");
-    }
-    if (typeof invokeEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_invoke");
-    }
-    if (typeof alarmEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_alarm");
-    }
-    if (typeof runScheduledTaskEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_executor_run");
-    }
-    if (typeof resumeClockWaitEndpoint !== "function") {
-      throw new Error("runtime instance does not export database_clock_resume");
-    }
-    if (!(addressSpace instanceof WebAssembly.Memory)) {
-      throw new Error("runtime instance does not export memory");
-    }
-    return {
-      reservePayload: reservePayloadEndpoint as (byteCount: number) => number,
-      releasePayload: releasePayloadEndpoint as (
-        payloadAddress: number,
-        byteCount: number
-      ) => void,
-      start: startEndpoint as (callID: number) => void,
-      invoke: invokeEndpoint as (
-        callID: number,
-        payloadAddress: number,
-        byteCount: number
-      ) => void,
-      alarm: alarmEndpoint as (callID: number) => void,
-      runScheduledTask: runScheduledTaskEndpoint as (taskID: number) => void,
-      resumeClockWait: resumeClockWaitEndpoint as (waitID: number) => void,
-      addressSpace,
-    };
+    return requireDatabaseRuntimeEndpoints(this.runtimeInstance);
   }
 }
 

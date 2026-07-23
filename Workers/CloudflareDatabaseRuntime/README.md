@@ -98,11 +98,21 @@ failures remain visible to Cloudflare's alarm retry behavior.
 npm install
 npm run typecheck
 npm test
+cd ../..
+sh scripts/verify-runtime-feasibility.sh
 ```
 
-The application repository owns the concrete runtime build, Durable Object
-subclass, Wrangler configuration, persistence E2E, authentication policy, and
-Cloudflare feasibility gate.
+The feasibility gate builds the full app-specific verification reactor with
+Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
+executes startup and a typed DatabaseWire request against the synchronous
+StorageKit SQLite host, and enforces Worker size, isolate address-space, and
+startup limits. `SWIFT_EXECUTABLE`, `SWIFT_WASM_SDK`, and
+`DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
+locations.
+
+The application repository owns its concrete runtime application, Durable
+Object subclass, Wrangler configuration, persistence E2E, and authentication
+policy. It runs the same gate for its app-specific reactor before deployment.
 
 The normative fixed boundary is documented in
 [`Docs/ADR-0001-full-runtime-reactor-abi.md`](../../Docs/ADR-0001-full-runtime-reactor-abi.md).
