@@ -120,7 +120,7 @@ aggregate memory limit.
 7. The Durable Object `alarm()` handler awaits `database_alarm` through the
    same FIFO queue. Infrastructure failures escape the handler so Cloudflare's
    alarm retry mechanism can invoke a later runtime generation. TypeScript does
-   not inspect job records or implement retry policy.
+   not inspect persisted job state or implement retry policy.
 
 ## Consequences
 
