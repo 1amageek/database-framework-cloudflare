@@ -13,7 +13,7 @@ let package = Package(
     dependencies: [
         .package(path: "../database-framework", traits: []),
         .package(path: "../database-kit"),
-        .package(path: "../storage-kit", traits: []),
+        .package(path: "../storage-kit"),
     ],
     targets: [
         .target(

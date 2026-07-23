@@ -171,4 +171,48 @@ struct CloudflareDatabaseRuntimeTests {
 
         #expect(completion.completion(callID: 41)?.status == .runtimeFailed)
     }
+
+    @Test("the pending-operation limit includes the active operation")
+    func activeOperationConsumesQueueCapacity() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let jobService = SuspendedCloudflareDatabaseJobService()
+        let runtime = CloudflareDatabaseRuntime(
+            application: try RuntimeVerificationApplication(
+                jobService: jobService
+            ),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            jobScheduler: DiscardingDatabaseJobScheduler(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: completion
+            ),
+            limits: try CloudflareDatabaseRuntimeLimits(
+                maximumRequestBytes: 4 * 1_024,
+                maximumResponseBytes: 4 * 1_024,
+                maximumErrorBytes: 1_024,
+                maximumPendingInvocations: 1
+            )
+        )
+
+        await runtime.start(callID: 50)
+        let activeAlarm = Task {
+            await runtime.alarm(callID: 51)
+        }
+        await jobService.waitUntilScheduledWorkStarts()
+
+        let request = try DatabaseEnvelopeCodec.encodeRequest(
+            CapabilitiesDescribeOperation.self,
+            requestID: 52,
+            metadata: DatabaseRequestMetadata(),
+            request: DatabaseEmpty()
+        )
+        await runtime.invoke(callID: 52, requestBytes: request)
+
+        #expect(
+            completion.completion(callID: 52)?.status
+                == .queueCapacityExceeded
+        )
+        await jobService.resume()
+        await activeAlarm.value
+        #expect(completion.completion(callID: 51)?.status == .success)
+    }
 }

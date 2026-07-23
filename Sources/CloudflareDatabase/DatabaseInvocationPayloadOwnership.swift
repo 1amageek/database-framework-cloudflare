@@ -4,13 +4,12 @@ import Synchronization
 /// Owns invocation payloads until the database runtime adopts them.
 public final class DatabaseInvocationPayloadOwnership: Sendable {
     private struct PayloadReservation: Sendable {
-        let payloadAddress: UInt32
         let address: UInt
         let byteCount: UInt32
     }
 
     private struct OwnershipState: Sendable {
-        var reservations: [PayloadReservation] = []
+        var reservations: [UInt32: PayloadReservation] = [:]
         var ownedPayloadCount = 0
         var ownedPayloadBytes = 0
     }
@@ -60,17 +59,13 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
                 reservedPayload.deallocate()
                 return 0
             }
-            let insertionIndex = Self.insertionIndex(
-                for: payloadAddress,
-                in: state.reservations
+            precondition(
+                state.reservations[payloadAddress] == nil,
+                "Runtime allocator returned an address that is already owned"
             )
-            state.reservations.insert(
-                PayloadReservation(
-                    payloadAddress: payloadAddress,
-                    address: address,
-                    byteCount: byteCount
-                ),
-                at: insertionIndex
+            state.reservations[payloadAddress] = PayloadReservation(
+                address: address,
+                byteCount: byteCount
             )
             state.ownedPayloadCount += 1
             state.ownedPayloadBytes = nextOwnedPayloadBytes
@@ -143,12 +138,7 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
 
     private func remove(payloadAddress: UInt32) -> PayloadReservation? {
         ownershipState.withLock { state in
-            guard let index = state.reservations.firstIndex(
-                where: { $0.payloadAddress == payloadAddress }
-            ) else {
-                return nil
-            }
-            return state.reservations.remove(at: index)
+            state.reservations.removeValue(forKey: payloadAddress)
         }
     }
 
@@ -170,23 +160,6 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
             state.ownedPayloadCount -= 1
             state.ownedPayloadBytes -= byteCount
         }
-    }
-
-    private static func insertionIndex(
-        for payloadAddress: UInt32,
-        in reservations: [PayloadReservation]
-    ) -> Int {
-        var lowerBound = reservations.startIndex
-        var upperBound = reservations.endIndex
-        while lowerBound < upperBound {
-            let middle = lowerBound + (upperBound - lowerBound) / 2
-            if reservations[middle].payloadAddress >= payloadAddress {
-                upperBound = middle
-            } else {
-                lowerBound = middle + 1
-            }
-        }
-        return lowerBound
     }
 
     private static func deallocate(address: UInt) {

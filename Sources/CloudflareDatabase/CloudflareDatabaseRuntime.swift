@@ -123,7 +123,7 @@ public actor CloudflareDatabaseRuntime {
             fail(callID: callID, status: .notStarted, message: "Database runtime is not started")
             return
         }
-        guard pendingOperations.count < limits.maximumPendingInvocations else {
+        guard admittedOperationCount < limits.maximumPendingInvocations else {
             fail(
                 callID: callID,
                 status: .queueCapacityExceeded,
@@ -150,7 +150,7 @@ public actor CloudflareDatabaseRuntime {
             fail(callID: callID, status: .notStarted, message: "Database runtime is not started")
             return
         }
-        guard pendingOperations.count < limits.maximumPendingInvocations else {
+        guard admittedOperationCount < limits.maximumPendingInvocations else {
             fail(
                 callID: callID,
                 status: .queueCapacityExceeded,
@@ -161,6 +161,10 @@ public actor CloudflareDatabaseRuntime {
 
         pendingOperations.append(.alarm(callID: callID))
         await processPendingOperationsIfNeeded()
+    }
+
+    private var admittedOperationCount: Int {
+        pendingOperations.count + (isProcessingOperations ? 1 : 0)
     }
 
     private func processPendingOperationsIfNeeded() async {
