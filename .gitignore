@@ -10,10 +10,10 @@ Package.resolved
 .swiftpm/xcode/package.xcworkspace/xcshareddata/
 
 # Node / Wrangler
-Workers/CloudflareDatabaseHost/node_modules/
-Workers/CloudflareDatabaseHost/.wrangler/
-Workers/CloudflareDatabaseHost/.dev.vars
-Workers/CloudflareDatabaseHost/src/CloudflareDatabaseRuntime.wasm
+Workers/CloudflareDatabaseRuntime/node_modules/
+Workers/CloudflareDatabaseRuntime/.wrangler/
+Workers/CloudflareDatabaseRuntime/.dev.vars
+Workers/CloudflareDatabaseRuntime/src/CloudflareDatabaseRuntime.wasm
 
 # Test artifacts
 *.xcresult

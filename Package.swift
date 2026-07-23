@@ -1,11 +1,5 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 import PackageDescription
-
-let hostPlatforms: [Platform] = [
-    .macOS,
-    .iOS,
-    .linux,
-]
 
 let package = Package(
     name: "database-framework-cloudflare",
@@ -15,52 +9,47 @@ let package = Package(
     ],
     products: [
         .library(name: "CloudflareDatabase", targets: ["CloudflareDatabase"]),
-        .executable(name: "CloudflareDatabaseRuntime", targets: ["CloudflareDatabaseRuntime"]),
     ],
     dependencies: [
-        .package(
-            url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0629.0",
-            traits: []
-        ),
-        .package(url: "https://github.com/1amageek/database-kit.git", from: "26.0629.0"),
-        .package(url: "https://github.com/1amageek/storage-kit.git", from: "26.0629.0"),
+        .package(path: "../database-framework", traits: []),
+        .package(path: "../database-kit"),
+        .package(path: "../storage-kit", traits: []),
     ],
     targets: [
         .target(
             name: "CloudflareDatabase",
             dependencies: [
-                .product(name: "Database", package: "database-framework", condition: .when(platforms: hostPlatforms)),
+                "CloudflareDatabaseTaskScheduling",
                 .product(name: "DatabaseEngine", package: "database-framework"),
-                .product(name: "DatabaseWire", package: "database-kit"),
-                .product(
-                    name: "CloudflareDurableObjectStorage",
-                    package: "storage-kit",
-                    condition: .when(platforms: hostPlatforms)
-                ),
+                .product(name: "DatabaseServer", package: "database-framework"),
+                .product(name: "DatabaseValue", package: "database-kit"),
+                .product(name: "StorageKit", package: "storage-kit"),
+                .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
+                .product(name: "CloudflareDurableObjectStorageHostTransport", package: "storage-kit"),
             ],
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
             ]
         ),
-        .executableTarget(
-            name: "CloudflareDatabaseRuntime",
-            dependencies: [
-                "CloudflareDatabase",
-                .product(name: "DatabaseEngine", package: "database-framework"),
-                .product(name: "DatabaseWire", package: "database-kit"),
-            ],
-            swiftSettings: [
-                .enableExperimentalFeature("Extern"),
-            ]
+        .target(
+            name: "CloudflareDatabaseTaskScheduling"
         ),
         .testTarget(
             name: "CloudflareDatabaseTests",
             dependencies: [
                 "CloudflareDatabase",
+                .product(name: "Core", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
+                .product(name: "DatabaseRuntime", package: "database-framework"),
+                .product(name: "DatabaseServer", package: "database-framework"),
                 .product(name: "DatabaseWire", package: "database-kit"),
+                .product(name: "DatabaseValue", package: "database-kit"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
+                .product(
+                    name: "CloudflareDurableObjectStorageTesting",
+                    package: "storage-kit"
+                ),
+                .product(name: "StorageKit", package: "storage-kit"),
             ]
         ),
     ]

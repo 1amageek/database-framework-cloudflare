@@ -1,0 +1,26 @@
+import CloudflareDurableObjectStorage
+import DatabaseEngine
+import DatabaseServer
+
+/// Application-owned composition root for one compiled database runtime.
+public protocol CloudflareDatabaseApplication: AnyObject, Sendable {
+    /// Stable StorageKit scope hosted by the Durable Object instance.
+    var storageScope: CloudflareDurableObjectStorageScope { get }
+
+    /// Storage limits enforced by both the engine and its platform adapter.
+    var storageLimits: CloudflareDurableObjectLimits { get }
+
+    /// Creates and migrates the application-specific container.
+    func makeContainer(
+        storageEngine: CloudflareDurableObjectStorageEngine
+    ) async throws -> DBContainer
+
+    /// Provides every service required by the canonical DatabaseWire runtime.
+    ///
+    /// The platform scheduler must be passed to the persistent job service so
+    /// wake-ups survive runtime eviction through Durable Object alarms.
+    func makeServerConfiguration(
+        container: DBContainer,
+        jobScheduler: AnyDatabaseJobScheduler
+    ) async throws -> DatabaseServerRuntimeConfiguration
+}
