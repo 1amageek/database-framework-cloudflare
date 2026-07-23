@@ -29,10 +29,10 @@
     "@storage-kit/cloudflare-durable-object-storage-host": "file:../../../storage-kit/Workers/CloudflareDurableObjectStorageHost"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260702.1",
+    "@cloudflare/workers-types": "5.20260723.1",
     "@types/node": "^26.0.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "wrangler": "4.105.0"
+    "wrangler": "4.114.0"
   }
 }
