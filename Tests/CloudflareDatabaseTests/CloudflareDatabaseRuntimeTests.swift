@@ -50,7 +50,7 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(response.runtimeVersion == "cloudflare-runtime-verification")
     }
 
-    @Test("full runtime describes schema and persists canonical records")
+    @Test("full runtime describes schema and persists canonical entities")
     func executesSchemaMutationAndQueryOperations() async throws {
         let completion = RecordingCloudflareDatabaseCompletion()
         let runtime = CloudflareDatabaseRuntime(
@@ -74,19 +74,19 @@ struct CloudflareDatabaseRuntimeTests {
         )
         let entity = try #require(
             schema.entities.first {
-                $0.name == RuntimeVerificationRecord.persistableType
+                $0.name == RuntimeVerificationDocument.persistableType
             }
         )
         #expect(entity.fields.map(\.name) == ["id", "title"])
 
-        let identity = RecordIdentity(
-            entity: RuntimeVerificationRecord.persistableType,
-            id: .string("record-1")
+        let identity = PersistableIdentity(
+            entity: RuntimeVerificationDocument.persistableType,
+            id: .string("document-1")
         )
         let mutation = try await invoke(
             MutationExecuteOperation.self,
             request: MutationExecuteOperation.Request(
-                input: .records([
+                input: .entities([
                     MutationExecuteOperation.Change(
                         kind: .insert,
                         identity: identity,
@@ -94,7 +94,7 @@ struct CloudflareDatabaseRuntimeTests {
                             DatabaseObjectField(
                                 number: 1,
                                 name: "id",
-                                value: .string("record-1")
+                                value: .string("document-1")
                             ),
                             DatabaseObjectField(
                                 number: 2,
@@ -108,13 +108,13 @@ struct CloudflareDatabaseRuntimeTests {
             requestID: 62,
             callID: 62,
             metadata: DatabaseRequestMetadata(
-                idempotencyKey: "runtime-record-1"
+                idempotencyKey: "runtime-document-1"
             ),
             runtime: runtime,
             completion: completion
         )
-        guard case .records(let effects) = mutation.result else {
-            Issue.record("Record mutation returned an RDF result")
+        guard case .entities(let effects) = mutation.result else {
+            Issue.record("Entity mutation returned an RDF result")
             return
         }
         #expect(effects.count == 1)
@@ -126,7 +126,7 @@ struct CloudflareDatabaseRuntimeTests {
                 input: .text(
                     language: .sql,
                     statement:
-                        "SELECT id, title FROM RuntimeVerificationRecord"
+                        "SELECT id, title FROM RuntimeVerificationDocument"
                 )
             ),
             requestID: 63,
@@ -135,7 +135,7 @@ struct CloudflareDatabaseRuntimeTests {
             completion: completion
         )
         guard case .rows(let page) = query else {
-            Issue.record("Record query returned a non-row result")
+            Issue.record("Entity query returned a non-row result")
             return
         }
         #expect(page.rows.count == 1)

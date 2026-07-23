@@ -19,7 +19,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         storageEngine: CloudflareDurableObjectStorageEngine
     ) async throws -> DBContainer {
         return try await DBContainer.open(
-            for: Schema([RuntimeVerificationRecord.self]),
+            for: Schema([RuntimeVerificationDocument.self]),
             configuration: DBConfiguration(
                 backend: .custom(storageEngine),
                 logging: .disabled

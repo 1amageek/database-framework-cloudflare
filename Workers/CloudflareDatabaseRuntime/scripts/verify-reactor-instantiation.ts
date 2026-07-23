@@ -98,7 +98,7 @@ async function verifyRuntime(): Promise<void> {
     makeEmptyRequest(schemaOperation, schemaRequestID)
   );
   verifySuccessResponse(schemaResponse, schemaRequestID, schemaOperation);
-  verifyPayloadContains(schemaResponse, "RuntimeVerificationRecord");
+  verifyPayloadContains(schemaResponse, "RuntimeVerificationDocument");
   const invocationMilliseconds = performance.now() - invocationStartedAt;
   if (terminalFailure !== null) {
     throw new Error(`runtime entered terminal failure: ${terminalFailure}`);

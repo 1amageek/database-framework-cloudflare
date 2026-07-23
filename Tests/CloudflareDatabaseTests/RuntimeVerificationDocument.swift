@@ -2,8 +2,8 @@ import Core
 import DatabaseValue
 
 @Persistable
-struct RuntimeVerificationRecord {
-    #Directory<RuntimeVerificationRecord>(
+struct RuntimeVerificationDocument {
+    #Directory<RuntimeVerificationDocument>(
         "verification",
         "cloudflare-runtime"
     )
