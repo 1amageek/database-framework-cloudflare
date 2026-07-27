@@ -1,13 +1,13 @@
 import CloudflareDurableObjectStorage
 import DatabaseEngine
 import DatabaseServer
-import DatabaseValue
+import DatabaseTypes
 
 /// Persistent, single-entry database runtime owned by one Durable Object.
 public actor CloudflareDatabaseRuntime {
     private struct Invocation: Sendable {
         let callID: UInt32
-        let requestBytes: DatabaseBytes
+        let requestBytes: ByteString
     }
 
     private enum PendingOperation: Sendable {
@@ -106,7 +106,7 @@ public actor CloudflareDatabaseRuntime {
     }
 
     /// Enqueues one DatabaseWire request without allowing concurrent runtime entry.
-    public func invoke(callID: UInt32, requestBytes: DatabaseBytes) async {
+    public func invoke(callID: UInt32, requestBytes: ByteString) async {
         guard callID != 0 else {
             fail(callID: callID, status: .invalidCallID, message: "Call ID must be non-zero")
             return
@@ -271,7 +271,7 @@ public actor CloudflareDatabaseRuntime {
         completion.complete(
             callID: callID,
             status: status,
-            payload: DatabaseBytes.copyingUTF8(
+            payload: ByteString.copyingUTF8(
                 message,
                 maximumByteCount: limits.maximumErrorBytes
             )

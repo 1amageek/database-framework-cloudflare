@@ -1,9 +1,9 @@
 import DatabaseServer
-import DatabaseValue
+import DatabaseTypes
 
 struct DiscardingDatabaseJobScheduler: DatabaseJobScheduler {
     func ensureWakeUp(
-        noLaterThan timestamp: DatabaseTimestamp
+        noLaterThan timestamp: Timestamp
     ) async throws {
         _ = timestamp
     }

@@ -1,4 +1,4 @@
-import DatabaseValue
+import DatabaseTypes
 import Synchronization
 
 /// Owns invocation payloads until the database runtime adopts them.
@@ -101,7 +101,7 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
     public func consumePayload(
         payloadAddress: UInt32,
         byteCount: UInt32
-    ) throws(DatabaseInvocationPayloadError) -> DatabaseBytes {
+    ) throws(DatabaseInvocationPayloadError) -> ByteString {
         guard byteCount > 0 else {
             guard payloadAddress == 0 else {
                 if let reservation = remove(payloadAddress: payloadAddress) {
@@ -122,11 +122,11 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
                 actual: byteCount
             )
         }
-        return DatabaseBytes(
-            allocation: DatabaseByteAllocation(
-                unsafeAddress: reservation.address,
+        return ByteString(
+            retaining: InvocationPayloadOwner(
+                address: reservation.address,
                 count: Int(reservation.byteCount),
-                deallocator: { address, count in
+                release: { address, count in
                     self.releaseConsumedPayload(
                         address: address,
                         byteCount: count

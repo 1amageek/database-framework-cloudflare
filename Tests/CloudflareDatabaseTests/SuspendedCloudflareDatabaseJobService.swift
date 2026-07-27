@@ -2,7 +2,7 @@ import DatabaseServer
 import DatabaseWire
 
 actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {
-    nonisolated var jobOperations: [DatabaseJobOperationIdentifier] { [] }
+    nonisolated var jobOperations: [JobOperationIdentifier] { [] }
 
     private var hasStartedScheduledWork = false
     private var startWaiters: [CheckedContinuation<Void, Never>] = []

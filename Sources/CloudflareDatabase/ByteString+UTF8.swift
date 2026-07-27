@@ -1,10 +1,10 @@
-import DatabaseValue
+import DatabaseTypes
 
-extension DatabaseBytes {
+extension ByteString {
     static func copyingUTF8(
         _ string: String,
         maximumByteCount: Int = .max
-    ) -> DatabaseBytes {
+    ) -> ByteString {
         precondition(maximumByteCount >= 0)
         var byteCount = 0
         for scalar in string.unicodeScalars {
@@ -20,7 +20,7 @@ extension DatabaseBytes {
             }
             byteCount += scalarByteCount
         }
-        return DatabaseBytes.copying(count: byteCount) { destination in
+        return ByteString.copying(count: byteCount) { destination in
             var index = 0
             for byte in string.utf8 {
                 guard index < byteCount else {

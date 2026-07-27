@@ -1,6 +1,6 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorageTesting
-import DatabaseValue
+import DatabaseTypes
 import DatabaseWire
 import Testing
 
@@ -21,11 +21,11 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.start(callID: 1)
         #expect(completion.completion(callID: 1)?.status == .success)
 
-        let request = try DatabaseEnvelopeCodec.encodeRequest(
-            CapabilitiesDescribeOperation.self,
+        let request = try DatabaseWireEncoder().encodeRequest(
+            DatabaseOperations.capabilitiesDescribe,
             requestID: 42,
-            metadata: DatabaseRequestMetadata(),
-            request: DatabaseEmpty()
+            metadata: OperationRequestMetadata(),
+            request: EmptyOperationPayload()
         )
         await runtime.invoke(callID: 2, requestBytes: request)
 
@@ -33,20 +33,18 @@ struct CloudflareDatabaseRuntimeTests {
             completion.completion(callID: 2)
         )
         #expect(completionRecord.status == .success)
-        let envelope = try DatabaseEnvelopeCodec.decodeResponse(
-            completionRecord.payload
+        let decoded = try DatabaseWireDecoder().decodeResponse(
+            DatabaseOperations.capabilitiesDescribe,
+            from: completionRecord.payload,
+            matching: 42
         )
-        let payload: DatabaseBytes
-        switch envelope.payload {
+        let response: CapabilitiesDescribeOperation.Response
+        switch decoded {
         case .success(let value):
-            payload = value
+            response = value
         case .failure(let error):
             throw error
         }
-        let response = try DatabaseEnvelopeCodec.decode(
-            CapabilitiesDescribeOperation.Response.self,
-            from: payload
-        )
         #expect(response.runtimeVersion == "cloudflare-runtime-verification")
     }
 
@@ -65,8 +63,8 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(completion.completion(callID: 60)?.status == .success)
 
         let schema = try await invoke(
-            SchemaDescribeOperation.self,
-            request: DatabaseEmpty(),
+            DatabaseOperations.schemaDescribe,
+            request: EmptyOperationPayload(),
             requestID: 61,
             callID: 61,
             runtime: runtime,
@@ -79,35 +77,27 @@ struct CloudflareDatabaseRuntimeTests {
         )
         #expect(entity.fields.map(\.name) == ["id", "title"])
 
-        let identity = PersistableIdentity(
+        let identity = try EntityReference(
             entity: RuntimeVerificationDocument.persistableType,
             id: .string("document-1")
         )
         let mutation = try await invoke(
-            MutationExecuteOperation.self,
+            DatabaseOperations.mutationExecute,
             request: MutationExecuteOperation.Request(
                 input: .entities([
                     MutationExecuteOperation.Change(
                         kind: .insert,
                         identity: identity,
-                        fields: [
-                            DatabaseObjectField(
-                                number: 1,
-                                name: "id",
-                                value: .string("document-1")
-                            ),
-                            DatabaseObjectField(
-                                number: 2,
-                                name: "title",
-                                value: .string("Cloudflare runtime")
-                            ),
-                        ]
+                        fields: try FieldObject([
+                            (key: "id", value: .string("document-1")),
+                            (key: "title", value: .string("Cloudflare runtime")),
+                        ])
                     )
                 ])
             ),
             requestID: 62,
             callID: 62,
-            metadata: DatabaseRequestMetadata(
+            metadata: OperationRequestMetadata(
                 idempotencyKey: "runtime-document-1"
             ),
             runtime: runtime,
@@ -121,7 +111,7 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(effects[0].identity == identity)
 
         let query = try await invoke(
-            QueryExecuteOperation.self,
+            DatabaseOperations.queryExecute,
             request: QueryExecuteOperation.Request(
                 input: .text(
                     language: .sql,
@@ -138,12 +128,12 @@ struct CloudflareDatabaseRuntimeTests {
             Issue.record("Entity query returned a non-row result")
             return
         }
-        #expect(page.rows.count == 1)
-        #expect(
-            page.rows[0].values.first {
-                $0.name == "title"
-            }?.value == .string("Cloudflare runtime")
+        #expect(page.rowCount == 1)
+        let titleColumnIndex = try #require(
+            page.columns.firstIndex { $0.name == "title" }
         )
+        let rows = try page.materializedRows(maximumCount: 1)
+        #expect(rows[0].values[titleColumnIndex] == .string("Cloudflare runtime"))
     }
 
     @Test("startup failures can be retried and successful startup is single-use")
@@ -214,11 +204,11 @@ struct CloudflareDatabaseRuntimeTests {
 
         #expect(completion.completion(callID: 24)?.status == .invalidRequestFrame)
 
-        let validRequest = try DatabaseEnvelopeCodec.encodeRequest(
-            CapabilitiesDescribeOperation.self,
+        let validRequest = try DatabaseWireEncoder().encodeRequest(
+            DatabaseOperations.capabilitiesDescribe,
             requestID: 25,
-            metadata: DatabaseRequestMetadata(),
-            request: DatabaseEmpty()
+            metadata: OperationRequestMetadata(),
+            request: EmptyOperationPayload()
         )
         await runtime.invoke(callID: 25, requestBytes: validRequest)
         #expect(completion.completion(callID: 25)?.status == .success)
@@ -295,11 +285,11 @@ struct CloudflareDatabaseRuntimeTests {
         }
         await jobService.waitUntilScheduledWorkStarts()
 
-        let request = try DatabaseEnvelopeCodec.encodeRequest(
-            CapabilitiesDescribeOperation.self,
+        let request = try DatabaseWireEncoder().encodeRequest(
+            DatabaseOperations.capabilitiesDescribe,
             requestID: 52,
-            metadata: DatabaseRequestMetadata(),
-            request: DatabaseEmpty()
+            metadata: OperationRequestMetadata(),
+            request: EmptyOperationPayload()
         )
         await runtime.invoke(callID: 52, requestBytes: request)
 
@@ -312,16 +302,16 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(completion.completion(callID: 51)?.status == .success)
     }
 
-    private func invoke<Operation: DatabaseOperation>(
-        _ operation: Operation.Type,
-        request: Operation.Request,
+    private func invoke<Request: Sendable, Response: Sendable>(
+        _ operation: DatabaseOperation<Request, Response>,
+        request: Request,
         requestID: UInt64,
         callID: UInt32,
-        metadata: DatabaseRequestMetadata = DatabaseRequestMetadata(),
+        metadata: OperationRequestMetadata = OperationRequestMetadata(),
         runtime: CloudflareDatabaseRuntime,
         completion: RecordingCloudflareDatabaseCompletion
-    ) async throws -> Operation.Response {
-        let requestBytes = try DatabaseEnvelopeCodec.encodeRequest(
+    ) async throws -> Response {
+        let requestBytes = try DatabaseWireEncoder().encodeRequest(
             operation,
             requestID: requestID,
             metadata: metadata,
@@ -330,19 +320,16 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.invoke(callID: callID, requestBytes: requestBytes)
         let completed = try #require(completion.completion(callID: callID))
         #expect(completed.status == .success)
-        let envelope = try DatabaseEnvelopeCodec.decodeResponse(
-            completed.payload
+        let decoded = try DatabaseWireDecoder().decodeResponse(
+            operation,
+            from: completed.payload,
+            matching: requestID
         )
-        let payload: DatabaseBytes
-        switch envelope.payload {
+        switch decoded {
         case .success(let response):
-            payload = response
+            return response
         case .failure(let error):
             throw error
         }
-        return try DatabaseEnvelopeCodec.decode(
-            Operation.Response.self,
-            from: payload
-        )
     }
 }

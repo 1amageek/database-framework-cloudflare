@@ -1,5 +1,5 @@
 #if arch(wasm32)
-import DatabaseValue
+import DatabaseTypes
 import Synchronization
 
 /// Application-facing owner of one persistent database runtime instance.
@@ -140,7 +140,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         requestAddress: UInt32,
         requestByteCount: UInt32
     ) {
-        let requestBytes: DatabaseBytes
+        let requestBytes: ByteString
         do {
             requestBytes = try invocationPayloadOwnership.consumePayload(
                 payloadAddress: requestAddress,
@@ -204,7 +204,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         completion.complete(
             callID: callID,
             status: status,
-            payload: DatabaseBytes.copyingUTF8(
+            payload: ByteString.copyingUTF8(
                 message,
                 maximumByteCount: limits.maximumErrorBytes
             )

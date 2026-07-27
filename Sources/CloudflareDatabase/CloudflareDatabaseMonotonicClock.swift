@@ -2,21 +2,28 @@ import StorageKit
 
 /// Cancellable monotonic clock for one Cloudflare database runtime.
 public struct CloudflareDatabaseMonotonicClock: StorageMonotonicClock {
+    private static let clock = ContinuousClock()
+    private static let origin = clock.now
+
     public init() {}
 
-    public var now: ContinuousClock.Instant {
-        ContinuousClock().now
+    public var now: StorageInstant {
+        StorageInstant(
+            durationSinceReference: Self.origin.duration(to: Self.clock.now)
+        )
     }
 
     public func sleep(
-        until deadline: ContinuousClock.Instant
+        until deadline: StorageInstant
     ) async throws {
+        let remaining = now.duration(to: deadline)
+        guard remaining > .zero else {
+            return
+        }
         #if arch(wasm32)
-        try await CloudflareDatabaseClockService.shared.sleep(
-            until: deadline
-        )
+        try await CloudflareDatabaseClockService.shared.sleep(for: remaining)
         #else
-        try await ContinuousClock().sleep(until: deadline)
+        try await Self.clock.sleep(for: remaining)
         #endif
     }
 

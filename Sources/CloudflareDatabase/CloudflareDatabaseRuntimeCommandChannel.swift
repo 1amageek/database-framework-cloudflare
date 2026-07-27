@@ -1,7 +1,7 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageHostTransport
 import DatabaseServer
-import DatabaseValue
+import DatabaseTypes
 
 /// Schedules database runtime lifecycle commands from the synchronous boundary.
 public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
@@ -62,7 +62,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         }
     }
 
-    public func invoke(callID: UInt32, requestBytes: DatabaseBytes) {
+    public func invoke(callID: UInt32, requestBytes: ByteString) {
         guard callID != 0 else {
             completeFailure(
                 callID: callID,
@@ -101,7 +101,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         completion.complete(
             callID: callID,
             status: status,
-            payload: DatabaseBytes.copyingUTF8(
+            payload: ByteString.copyingUTF8(
                 message,
                 maximumByteCount: limits.maximumErrorBytes
             )

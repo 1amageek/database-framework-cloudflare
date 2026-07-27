@@ -1,4 +1,4 @@
-import DatabaseValue
+import DatabaseTypes
 
 #if arch(wasm32)
 @_extern(wasm, module: "database_host", name: "complete")
@@ -25,7 +25,7 @@ public final class CloudflareDatabaseCompletionChannel: Sendable {
     public func complete(
         callID: UInt32,
         status: CloudflareDatabaseCompletionStatus,
-        payload: DatabaseBytes
+        payload: ByteString
     ) {
 #if arch(wasm32)
         guard let byteCount = UInt32(exactly: payload.count) else {

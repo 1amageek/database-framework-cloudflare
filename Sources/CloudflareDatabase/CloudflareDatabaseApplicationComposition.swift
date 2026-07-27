@@ -1,4 +1,5 @@
 import CloudflareDurableObjectStorage
+import CloudflareDurableObjectStorageWire
 import DatabaseEngine
 import DatabaseServer
 
@@ -6,7 +7,7 @@ import DatabaseServer
 public final class CloudflareDatabaseApplicationComposition:
     CloudflareDatabaseApplication,
     Sendable {
-    public let storageScope: CloudflareDurableObjectStorageScope
+    public let storageScope: StorageWireScope
     public let storageLimits: CloudflareDurableObjectLimits
 
     private let createContainer: @Sendable (

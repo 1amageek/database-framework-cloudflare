@@ -6,6 +6,10 @@ repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 swift_executable=${SWIFT_EXECUTABLE:-}
 swift_wasm_sdk=${SWIFT_WASM_SDK:-}
 build_path=${DATABASE_RUNTIME_BUILD_PATH:-"$repository_root/.build/release-gate"}
+case "$build_path" in
+    /*) ;;
+    *) build_path="$repository_root/$build_path" ;;
+esac
 artifact_directory="$build_path/artifacts"
 source_artifact="$build_path/out/Products/Release-webassembly-wasm32/CloudflareDatabaseRuntimeVerification.wasm"
 optimized_artifact="$artifact_directory/CloudflareDatabaseRuntimeVerification.wasm"
@@ -48,6 +52,8 @@ fi
     --swift-sdk "$swift_wasm_sdk" \
     --target CloudflareDatabaseRuntimeVerification \
     --build-path "$build_path" \
+    --disable-index-store \
+    -j 1 \
     -Xswiftc -Osize \
     -Xswiftc -whole-module-optimization
 

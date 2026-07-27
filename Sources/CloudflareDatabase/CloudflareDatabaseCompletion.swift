@@ -1,4 +1,4 @@
-import DatabaseValue
+import DatabaseTypes
 
 /// Synchronous completion boundary from the runtime to its Durable Object owner.
 public protocol CloudflareDatabaseCompletion: AnyObject, Sendable {
@@ -6,6 +6,6 @@ public protocol CloudflareDatabaseCompletion: AnyObject, Sendable {
     func complete(
         callID: UInt32,
         status: CloudflareDatabaseCompletionStatus,
-        payload: DatabaseBytes
+        payload: ByteString
     )
 }

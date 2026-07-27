@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "CloudflareDatabase", targets: ["CloudflareDatabase"]),
     ],
     dependencies: [
+        .package(path: "../database-types"),
         .package(path: "../database-framework", traits: []),
         .package(path: "../database-kit"),
         .package(path: "../storage-kit"),
@@ -22,9 +23,10 @@ let package = Package(
                 "CloudflareDatabaseTaskScheduling",
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
-                .product(name: "DatabaseValue", package: "database-kit"),
+                .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "StorageKit", package: "storage-kit"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
+                .product(name: "CloudflareDurableObjectStorageWire", package: "storage-kit"),
                 .product(name: "CloudflareDurableObjectStorageHostTransport", package: "storage-kit"),
             ],
             swiftSettings: [
@@ -38,12 +40,13 @@ let package = Package(
             name: "CloudflareDatabaseRuntimeVerification",
             dependencies: [
                 "CloudflareDatabase",
-                .product(name: "Core", package: "database-kit"),
+                .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
-                .product(name: "DatabaseValue", package: "database-kit"),
+                .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
+                .product(name: "CloudflareDurableObjectStorageWire", package: "storage-kit"),
             ],
             path: "Tests/CloudflareDatabaseRuntimeVerification",
             swiftSettings: [
@@ -64,13 +67,14 @@ let package = Package(
             name: "CloudflareDatabaseTests",
             dependencies: [
                 "CloudflareDatabase",
-                .product(name: "Core", package: "database-kit"),
+                .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
                 .product(name: "DatabaseWire", package: "database-kit"),
-                .product(name: "DatabaseValue", package: "database-kit"),
+                .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
+                .product(name: "CloudflareDurableObjectStorageWire", package: "storage-kit"),
                 .product(
                     name: "CloudflareDurableObjectStorageTesting",
                     package: "storage-kit"

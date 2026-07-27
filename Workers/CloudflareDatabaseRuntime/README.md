@@ -108,7 +108,10 @@ executes startup and a typed DatabaseWire request against the synchronous
 StorageKit SQLite host, and enforces Worker size, isolate address-space, and
 startup limits. `SWIFT_EXECUTABLE`, `SWIFT_WASM_SDK`, and
 `DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
-locations.
+locations. Relative build paths are resolved from the repository root. The
+release gate disables index-store generation and uses one build job so the
+fixed Swift 6.4 WASI toolchain produces the same reactor without concurrent
+compiler resource failures.
 
 The application repository owns its concrete runtime application, Durable
 Object subclass, Wrangler configuration, persistence E2E, and authentication

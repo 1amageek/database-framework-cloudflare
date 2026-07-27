@@ -1,16 +1,17 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorage
-import Core
+import CloudflareDurableObjectStorageWire
+import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
 import DatabaseServer
 
 final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
-    let storageScope: CloudflareDurableObjectStorageScope
+    let storageScope: StorageWireScope
     let storageLimits = CloudflareDurableObjectLimits.default
 
     init() throws {
-        storageScope = try CloudflareDurableObjectStorageScope(
+        storageScope = try StorageWireScope(
             databaseID: "runtime-verification"
         )
     }
@@ -19,12 +20,16 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         storageEngine: CloudflareDurableObjectStorageEngine
     ) async throws -> DBContainer {
         return try await DBContainer.open(
-            for: Schema([RuntimeVerificationDocument.self]),
+            for: try Schema(
+                entities: [try RuntimeVerificationDocument.schemaEntity]
+            ),
             configuration: DBConfiguration(
                 backend: .custom(storageEngine),
                 logging: .disabled
             ),
-            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(),
+            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
+                persistableTypes: [RuntimeVerificationDocument.self]
+            ),
             security: .disabled
         )
     }

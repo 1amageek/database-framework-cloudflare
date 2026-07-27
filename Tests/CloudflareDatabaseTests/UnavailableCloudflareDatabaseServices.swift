@@ -7,7 +7,7 @@ struct UnavailableCloudflareDatabaseServices:
     DatabaseSHACLService,
     DatabaseMaintenanceService,
     DatabaseJobService {
-    var jobOperations: [DatabaseJobOperationIdentifier] { [] }
+    var jobOperations: [JobOperationIdentifier] { [] }
 
     func execute(
         _ request: GraphAlgorithmOperation.Request,

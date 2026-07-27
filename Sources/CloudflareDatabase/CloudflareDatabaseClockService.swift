@@ -33,14 +33,13 @@ final class CloudflareDatabaseClockService: Sendable {
         self.maximumWaitCount = maximumWaitCount
     }
 
-    func sleep(until deadline: ContinuousClock.Instant) async throws {
+    func sleep(for duration: Duration) async throws {
         try Task.checkCancellation()
-        let now = ContinuousClock().now
-        guard now < deadline else {
+        guard duration > .zero else {
             return
         }
         let delayMilliseconds = Self.milliseconds(
-            now.duration(to: deadline)
+            duration
         )
         let wait = try reserveWait()
         try await withTaskCancellationHandler {

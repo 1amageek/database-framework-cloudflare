@@ -1,6 +1,6 @@
 #if arch(wasm32)
 import DatabaseServer
-import DatabaseValue
+import DatabaseTypes
 
 @_extern(wasm, module: "database_alarm", name: "schedule")
 private func requestDatabaseWakeUpNoLaterThan(
@@ -13,7 +13,7 @@ public struct CloudflareDatabaseAlarmScheduler: DatabaseJobScheduler {
     public init() {}
 
     public func ensureWakeUp(
-        noLaterThan timestamp: DatabaseTimestamp
+        noLaterThan timestamp: Timestamp
     ) async throws {
         guard timestamp.nanoseconds < 1_000_000_000 else {
             throw CloudflareDatabaseAlarmSchedulerError.invalidTimestamp

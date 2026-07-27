@@ -1,5 +1,6 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageTesting
+import CloudflareDurableObjectStorageWire
 
 actor FailingOnceReadinessClient: CloudflareDurableObjectStorageClient {
     nonisolated var callExecution: CloudflareDurableObjectCallExecution {
@@ -10,26 +11,26 @@ actor FailingOnceReadinessClient: CloudflareDurableObjectStorageClient {
     private let storageClient = InMemoryCloudflareDurableObjectStorageClient()
 
     func read(
-        _ request: CloudflareDurableObjectReadRequest
-    ) async throws -> CloudflareDurableObjectReadResponse {
+        _ request: StorageWireReadRequest
+    ) async throws -> StorageWireReadResponse {
         try await storageClient.read(request)
     }
 
     func range(
-        _ request: CloudflareDurableObjectRangeRequest
-    ) async throws -> CloudflareDurableObjectRangeResponse {
+        _ request: StorageWireRangeRequest
+    ) async throws -> StorageWireRangeResponse {
         try await storageClient.range(request)
     }
 
     func commit(
-        _ request: CloudflareDurableObjectCommitRequest
-    ) async throws -> CloudflareDurableObjectCommitResponse {
+        _ request: StorageWireCommitRequest
+    ) async throws -> StorageWireCommitResponse {
         try await storageClient.commit(request)
     }
 
     func readiness(
-        _ request: CloudflareDurableObjectReadinessRequest
-    ) async throws -> CloudflareDurableObjectReadinessResponse {
+        _ request: StorageWireReadinessRequest
+    ) async throws -> StorageWireReadinessResponse {
         guard hasFailed else {
             hasFailed = true
             throw RuntimeVerificationError.simulatedReadinessFailure
@@ -38,14 +39,14 @@ actor FailingOnceReadinessClient: CloudflareDurableObjectStorageClient {
     }
 
     func rangeSize(
-        _ request: CloudflareDurableObjectRangeSizeRequest
-    ) async throws -> CloudflareDurableObjectRangeSizeResponse {
+        _ request: StorageWireRangeSizeRequest
+    ) async throws -> StorageWireRangeSizeResponse {
         try await storageClient.rangeSize(request)
     }
 
     func rangeSplitPoints(
-        _ request: CloudflareDurableObjectRangeSplitPointsRequest
-    ) async throws -> CloudflareDurableObjectRangeSplitPointsResponse {
+        _ request: StorageWireRangeSplitPointsRequest
+    ) async throws -> StorageWireRangeSplitPointsResponse {
         try await storageClient.rangeSplitPoints(request)
     }
 }

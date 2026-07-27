@@ -1,5 +1,5 @@
 import CloudflareDatabase
-import DatabaseValue
+import DatabaseTypes
 import Synchronization
 
 final class RecordingCloudflareDatabaseCompletion:
@@ -8,7 +8,7 @@ final class RecordingCloudflareDatabaseCompletion:
     struct CompletionRecord: Sendable, Equatable {
         let callID: UInt32
         let status: CloudflareDatabaseCompletionStatus
-        let payload: DatabaseBytes
+        let payload: ByteString
     }
 
     private let completions = Mutex<[CompletionRecord]>([])
@@ -16,7 +16,7 @@ final class RecordingCloudflareDatabaseCompletion:
     func complete(
         callID: UInt32,
         status: CloudflareDatabaseCompletionStatus,
-        payload: DatabaseBytes
+        payload: ByteString
     ) {
         completions.withLock {
             $0.append(

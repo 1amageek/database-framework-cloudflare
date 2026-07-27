@@ -1,5 +1,4 @@
-import Core
-import DatabaseValue
+import DatabaseKit
 
 @Persistable
 struct RuntimeVerificationDocument {

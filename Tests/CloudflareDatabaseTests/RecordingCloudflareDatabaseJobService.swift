@@ -2,7 +2,7 @@ import DatabaseServer
 import DatabaseWire
 
 actor RecordingCloudflareDatabaseJobService: DatabaseJobService {
-    nonisolated var jobOperations: [DatabaseJobOperationIdentifier] { [] }
+    nonisolated var jobOperations: [JobOperationIdentifier] { [] }
 
     private var scheduledRunCount = 0
 

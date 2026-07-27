@@ -46,7 +46,7 @@ The package exports one library product, `CloudflareDatabase`.
 | `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through the full server runtime |
 | `CloudflareDatabaseRuntimeCommandChannel` | Submits synchronous boundary commands to the actor-owned runtime |
 | `CloudflareDatabaseRuntimeEntrypoint` | Owns one application runtime and implements operations called by the application's fixed exports |
-| `DatabaseInvocationPayloadOwnership` | Transfers request payload ownership into immutable `DatabaseBytes` owners without rematerializing the frame |
+| `DatabaseInvocationPayloadOwnership` | Transfers request payload ownership into immutable `ByteString` owners without rematerializing the frame |
 | `CloudflareDatabaseTaskScheduler` | Runs Swift concurrency tasks through Cloudflare timers |
 | `CloudflareDatabaseClockService` | Suspends and resumes monotonic Swift clock waits |
 
@@ -184,8 +184,8 @@ Run focused native verification with a bounded `xcodebuild` invocation:
 ```bash
 sh scripts/xcodebuild-timeout.sh 600 \
   xcodebuild test -quiet \
-  -scheme database-framework-cloudflare \
-  -destination 'platform=macOS' \
+  -scheme database-framework-cloudflare-Package \
+  -destination 'platform=macOS,arch=arm64' \
   -only-testing:CloudflareDatabaseTests
 ```
 
