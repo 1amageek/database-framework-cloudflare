@@ -21,9 +21,7 @@ struct UnavailableCloudflareDatabaseServices:
     func execute(
         _ request: OntologyExecuteOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<
-        OntologyExecuteOperation
-    > {
+    ) async throws -> OntologyExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation
@@ -32,9 +30,7 @@ struct UnavailableCloudflareDatabaseServices:
     func execute(
         _ request: SHACLExecuteOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<
-        SHACLExecuteOperation
-    > {
+    ) async throws -> SHACLExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation
@@ -43,9 +39,7 @@ struct UnavailableCloudflareDatabaseServices:
     func execute(
         _ request: MaintenanceExecuteOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<
-        MaintenanceExecuteOperation
-    > {
+    ) async throws -> MaintenanceExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation
@@ -54,7 +48,7 @@ struct UnavailableCloudflareDatabaseServices:
     func start(
         _ request: JobStartOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<JobStartOperation> {
+    ) async throws -> JobStartExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation
@@ -81,7 +75,7 @@ struct UnavailableCloudflareDatabaseServices:
     func cancel(
         _ request: JobCancelOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<JobCancelOperation> {
+    ) async throws -> JobCancellationExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation

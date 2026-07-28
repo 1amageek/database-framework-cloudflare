@@ -39,10 +39,10 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         jobScheduler: AnyDatabaseJobScheduler
     ) async throws -> DatabaseServerRuntimeConfiguration {
         _ = container
+        let clock = RealtimeDatabaseWallClock()
         let jobServiceFactory = try DatabasePersistentJobServiceFactory(
             registry: DatabaseResumableOperationRegistry(operations: []),
             scheduler: jobScheduler,
-            clock: RealtimeDatabaseWallClock(),
             identifierGenerator: RandomDatabaseUUIDGenerator(),
             storageLimits: DatabasePersistentJobStorageLimits(
                 maximumStorageValueBytes: 1_048_576
@@ -61,7 +61,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
             ),
             admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
                 UnrestrictedDatabaseOperationAdmissionPolicy()
-            )
+            ),
+            clock: clock
         )
     }
 }

@@ -13,20 +13,20 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/1amageek/database-types.git",
-            from: "26.0728.2"
+            from: "26.0729.0"
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0728.3",
+            from: "26.0729.0",
             traits: []
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0728.1"
+            from: "26.0729.0"
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0728.2"
+            from: "26.0729.0"
         ),
     ],
     targets: [

@@ -25,7 +25,7 @@ actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {
     func start(
         _ request: JobStartOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<JobStartOperation> {
+    ) async throws -> JobStartExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation
@@ -52,7 +52,7 @@ actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {
     func cancel(
         _ request: JobCancelOperation.Request,
         context: DatabaseOperationContext
-    ) async throws -> DatabasePreparedOperationResponse<JobCancelOperation> {
+    ) async throws -> JobCancellationExecutionResult {
         _ = request
         _ = context
         throw RuntimeVerificationError.unexpectedServiceOperation

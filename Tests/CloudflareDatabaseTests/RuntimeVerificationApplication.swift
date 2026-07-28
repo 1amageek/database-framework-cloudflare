@@ -61,7 +61,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
             },
             admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
                 UnrestrictedDatabaseOperationAdmissionPolicy()
-            )
+            ),
+            clock: RealtimeDatabaseWallClock()
         )
     }
 }
