@@ -33,6 +33,7 @@ struct InvocationPayloadOwnerTests {
                 )
             )
 
+            #expect(bytes.retainedByteCount == 3)
             bytes.withUnsafeBytes { borrowedBytes in
                 #expect(
                     borrowedBytes.baseAddress.map(UInt.init(bitPattern:))

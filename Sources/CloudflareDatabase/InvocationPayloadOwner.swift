@@ -23,6 +23,8 @@ final class InvocationPayloadOwner: ByteStringOwner, Sendable {
         release(address, count)
     }
 
+    var retainedByteCount: Int? { count }
+
     func borrowBytes(
         _ body: (UnsafeRawBufferPointer) throws -> Void
     ) rethrows {
