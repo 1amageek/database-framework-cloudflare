@@ -112,7 +112,7 @@ sequenceDiagram
   Runtime->>DO: storage service call
   DO->>SQLite: synchronous transaction
   SQLite-->>DO: owned storage response
-  DO-->>Runtime: adopted response allocation
+  DO-->>Runtime: one copy into final Swift storage
   Server-->>Runtime: DatabaseWire response
   Runtime-->>DO: borrowed completion payload
   DO-->>App: owned response bytes
@@ -168,8 +168,9 @@ compiled protocol maxima.
 
 ## Development
 
-Adjacent local checkouts are used while the v1 ecosystem is under active
-development:
+The release manifest resolves every Swift dependency from a published Git tag.
+An adjacent checkout may be selected only through an explicit local SwiftPM
+development override; it is never committed in `Package.swift`:
 
 ```text
 Database/
@@ -196,6 +197,14 @@ cd Workers/CloudflareDatabaseRuntime
 npm install
 npm run typecheck
 npm test
+```
+
+The full feasibility gate also launches workerd twice against one persisted
+Durable Object state directory. It verifies Durable Object RPC, the full Swift
+reactor, StorageKit SQLite, and query visibility after process restart:
+
+```bash
+sh scripts/verify-runtime-feasibility.sh
 ```
 
 Build the application-specific runtime with a Swift 6.4 host toolchain and its

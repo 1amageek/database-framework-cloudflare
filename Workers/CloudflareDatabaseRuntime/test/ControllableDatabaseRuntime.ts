@@ -25,7 +25,7 @@ export type ControllableDatabaseRuntimeBehavior =
   | { kind: "startupFailureWithPendingServices"; message: string }
   | { kind: "invalidRequestPayloadAddress" }
   | { kind: "zeroRequestPayloadAddress" }
-  | { kind: "zeroStorageResponsePayloadAddress" }
+  | { kind: "storageResponseLengthMismatch" }
   | {
       kind: "commandFailure";
       runtimeCommand: "start" | "invoke" | "alarm" | "scheduledTask";
@@ -132,11 +132,6 @@ export function controllableDatabaseRuntimeInstantiator(
         if (behavior.kind === "invalidRequestPayloadAddress" && byteCount > 0) {
           return runtimeAddressSpace.buffer.byteLength;
         }
-        if (behavior.kind === "zeroStorageResponsePayloadAddress"
-            && invocationCount > 0
-            && byteCount > 0) {
-          return 0;
-        }
         return reservePayload(byteCount);
       },
       database_dealloc: (payloadAddress: number, byteCount: number) => {
@@ -228,30 +223,33 @@ export function controllableDatabaseRuntimeInstantiator(
             return;
           case "storage":
           case "storageRepeated":
-          case "zeroStorageResponsePayloadAddress": {
+          case "storageResponseLengthMismatch": {
             const dispatchCount = behavior.kind === "storageRepeated"
               ? behavior.dispatchCount
               : 1;
-            let responseFrameAddress = 0;
+            let responseAddress = 0;
             let responseByteCount = 0;
             for (let index = 0; index < dispatchCount; index += 1) {
               const requestPayloadAddress = storeRuntimePayload(requestBytes);
-              responseFrameAddress = dispatchStorageRequest(
+              responseByteCount = dispatchStorageRequest(
                 runtimeServices,
                 requestPayloadAddress,
                 requestBytes.byteLength
               );
-              responseByteCount = new DataView(
-                runtimeAddressSpace.buffer,
-                responseFrameAddress,
-                4
-              ).getUint32(0, true);
+              responseAddress = reservePayload(responseByteCount);
+              receiveStorageResponse(
+                runtimeServices,
+                responseAddress,
+                behavior.kind === "storageResponseLengthMismatch"
+                  ? responseByteCount + 1
+                  : responseByteCount
+              );
             }
             deliverRuntimeCompletion(
               runtimeServices,
               callID,
               0,
-              responseFrameAddress + 4,
+              responseAddress,
               responseByteCount
             );
             return;
@@ -425,4 +423,16 @@ function dispatchStorageRequest(
     throw new Error("storage_host.dispatch is not installed");
   }
   return Number(dispatch(payloadAddress, byteCount));
+}
+
+function receiveStorageResponse(
+  runtimeServices: WebAssembly.Imports,
+  payloadAddress: number,
+  byteCount: number
+): void {
+  const receive = runtimeServices.storage_host?.receive;
+  if (typeof receive !== "function") {
+    throw new Error("storage_host.receive is not installed");
+  }
+  receive(payloadAddress, byteCount);
 }

@@ -18,6 +18,8 @@ const requiredExports = new Map([
 ]);
 const requiredRuntimeImports = new Map([
   ["storage_host.dispatch", "function"],
+  ["storage_host.receive", "function"],
+  ["storage_host.discard", "function"],
   ["database_host.complete", "function"],
   ["database_executor.schedule", "function"],
   ["database_alarm.schedule", "function"],

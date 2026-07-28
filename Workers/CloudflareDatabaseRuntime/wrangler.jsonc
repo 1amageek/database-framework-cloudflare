@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "database-framework-cloudflare-runtime-verification",
+  "main": "test/fixtures/FullRuntimeWorker.ts",
+  "compatibility_date": "2026-07-28",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    }
+  },
+  "rules": [
+    {
+      "type": "CompiledWasm",
+      "globs": ["**/*.wasm"],
+      "fallthrough": true
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DATABASE",
+        "class_name": "RuntimeVerificationDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RuntimeVerificationDurableObject"]
+    }
+  ]
+}

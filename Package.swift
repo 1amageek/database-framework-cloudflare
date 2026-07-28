@@ -11,10 +11,23 @@ let package = Package(
         .library(name: "CloudflareDatabase", targets: ["CloudflareDatabase"]),
     ],
     dependencies: [
-        .package(path: "../database-types"),
-        .package(path: "../database-framework", traits: []),
-        .package(path: "../database-kit"),
-        .package(path: "../storage-kit"),
+        .package(
+            url: "https://github.com/1amageek/database-types.git",
+            from: "26.0728.2"
+        ),
+        .package(
+            url: "https://github.com/1amageek/database-framework.git",
+            from: "26.0728.3",
+            traits: []
+        ),
+        .package(
+            url: "https://github.com/1amageek/database-kit.git",
+            from: "26.0728.1"
+        ),
+        .package(
+            url: "https://github.com/1amageek/storage-kit.git",
+            from: "26.0728.2"
+        ),
     ],
     targets: [
         .target(
@@ -60,6 +73,8 @@ let package = Package(
                     "-z",
                     "-Xlinker",
                     "stack-size=8388608",
+                    "-Xlinker",
+                    "--initial-memory=67108864",
                 ], .when(platforms: [.wasi])),
             ]
         ),

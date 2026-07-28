@@ -6,6 +6,10 @@ import { DatabaseRuntimeInvocationError } from "./DatabaseRuntimeInvocationError
 import { DatabaseRuntimeFailureEncodingError } from "./DatabaseRuntimeFailureEncodingError";
 import { DatabaseRuntimeFailurePayloadLimitError } from "./DatabaseRuntimeFailurePayloadLimitError";
 import { DatabaseStorageResponseOwnershipError } from "./DatabaseStorageResponseOwnershipError";
+import {
+  databaseStorageResponseStateErrorReason,
+  DatabaseStorageResponseStateError,
+} from "./DatabaseStorageResponseStateError";
 import { DatabaseInvocationTimeoutError } from "./DatabaseInvocationTimeoutError";
 import type {
   DatabaseRuntimeEndpoints,
@@ -78,6 +82,7 @@ export class DatabaseRuntimeConnection {
   private nextCallID = 1;
   private terminalError: Error | null = null;
   private alarmScheduleTail: Promise<void> = Promise.resolve();
+  private pendingStorageResponse: Uint8Array | null = null;
 
   static async instantiate(
     runtimeProgram: DatabaseRuntimeProgram,
@@ -109,6 +114,9 @@ export class DatabaseRuntimeConnection {
           runtimeServices.storage_host = {
             dispatch: (payloadAddress: number, byteCount: number) =>
               connection.dispatchStorageRequest(payloadAddress, byteCount),
+            receive: (payloadAddress: number, byteCount: number) =>
+              connection.receiveStorageResponse(payloadAddress, byteCount),
+            discard: () => connection.discardStorageResponse(),
           };
           runtimeServices.database_host = {
             complete: (
@@ -265,6 +273,7 @@ export class DatabaseRuntimeConnection {
     this.terminalError = shutdownError;
     this.taskScheduler.shutdown();
     this.clockService.shutdown();
+    this.pendingStorageResponse = null;
     this.payloadOwnership.discardRuntimeGeneration();
     this.rejectAllPendingInvocations(shutdownError);
   }
@@ -552,6 +561,7 @@ export class DatabaseRuntimeConnection {
     this.terminalError = error;
     this.taskScheduler.shutdown();
     this.clockService.shutdown();
+    this.pendingStorageResponse = null;
     this.payloadOwnership.discardRuntimeGeneration();
     this.rejectAllPendingInvocations(error);
     this.handleRuntimeFailure(error.message);
@@ -564,6 +574,7 @@ export class DatabaseRuntimeConnection {
     this.terminalError = error;
     this.taskScheduler.shutdown();
     this.clockService.shutdown();
+    this.pendingStorageResponse = null;
     this.payloadOwnership.discardRuntimeGeneration();
     this.rejectAllPendingInvocations(error);
   }
@@ -572,6 +583,11 @@ export class DatabaseRuntimeConnection {
     payloadAddress: number,
     byteCount: number
   ): number {
+    if (this.pendingStorageResponse !== null) {
+      throw new DatabaseStorageResponseStateError({
+        reason: databaseStorageResponseStateErrorReason.responseAlreadyPending,
+      });
+    }
     if (byteCount > this.limits.maximumStorageRequestBytes) {
       throw new RangeError(
         "Storage request exceeds the runtime connection limit"
@@ -590,7 +606,13 @@ export class DatabaseRuntimeConnection {
         "Storage response exceeds the runtime connection limit"
       );
     }
-    return this.storeStorageResponse(responseBytes);
+    if (responseBytes.byteLength === 0) {
+      throw new DatabaseStorageResponseStateError({
+        reason: databaseStorageResponseStateErrorReason.emptyResponse,
+      });
+    }
+    this.pendingStorageResponse = responseBytes;
+    return responseBytes.byteLength;
   }
 
   private cancelInvocationTimeout(handle: unknown | null): void {
@@ -604,40 +626,44 @@ export class DatabaseRuntimeConnection {
     }
   }
 
-  private storeStorageResponse(payload: Uint8Array): number {
-    const frameByteCount = payload.byteLength + 4;
-    const payloadAddress = this.payloadOwnership.reservePayload(frameByteCount);
-    if (payloadAddress === 0) {
-      const error = new DatabaseRuntimeInvocationError(
-        databaseCompletionStatus.runtimeFailed,
-        "Database runtime returned a zero storage response payload address"
-      );
-      this.enterTerminal(error);
-      throw error;
+  private receiveStorageResponse(
+    payloadAddress: number,
+    byteCount: number
+  ): void {
+    const response = this.pendingStorageResponse;
+    if (response === null) {
+      throw new DatabaseStorageResponseStateError({
+        reason: databaseStorageResponseStateErrorReason.responseUnavailable,
+      });
+    }
+    if (byteCount !== response.byteLength) {
+      throw new DatabaseStorageResponseStateError({
+        reason: databaseStorageResponseStateErrorReason.responseLengthMismatch,
+        expectedByteCount: response.byteLength,
+        actualByteCount: byteCount,
+      });
     }
     try {
-      const responseFrame = this.payloadOwnership.borrowBytes(
+      const destination = this.payloadOwnership.borrowBytes(
         payloadAddress,
-        frameByteCount
+        byteCount
       );
-      new DataView(responseFrame.buffer, responseFrame.byteOffset, 4).setUint32(
-        0,
-        payload.byteLength,
-        true
-      );
-      responseFrame.set(payload, 4);
-    } catch (error) {
-      this.payloadOwnership.releaseConnectionPayload(
-        payloadAddress,
-        frameByteCount
-      );
-      throw error;
+      if (destination.buffer === response.buffer) {
+        throw new DatabaseStorageResponseOwnershipError();
+      }
+      destination.set(response);
+    } finally {
+      this.pendingStorageResponse = null;
     }
-    this.payloadOwnership.transferPayloadToRuntime(
-      payloadAddress,
-      frameByteCount
-    );
-    return payloadAddress;
+  }
+
+  private discardStorageResponse(): void {
+    if (this.pendingStorageResponse === null) {
+      throw new DatabaseStorageResponseStateError({
+        reason: databaseStorageResponseStateErrorReason.responseUnavailable,
+      });
+    }
+    this.pendingStorageResponse = null;
   }
 
   private reserveCallID(): number {
@@ -669,6 +695,11 @@ export class DatabaseRuntimeConnection {
 
   private finishInvocationSetIfIdle(): void {
     if (this.pendingInvocations.size === 0) {
+      if (this.pendingStorageResponse !== null) {
+        throw new DatabaseStorageResponseStateError({
+          reason: databaseStorageResponseStateErrorReason.responseAlreadyPending,
+        });
+      }
       this.payloadOwnership.finishInvocationSet();
     }
   }

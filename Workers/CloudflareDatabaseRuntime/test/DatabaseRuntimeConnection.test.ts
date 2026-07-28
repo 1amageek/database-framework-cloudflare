@@ -7,6 +7,10 @@ import { DatabaseRuntimeInvocationError } from "../src/DatabaseRuntimeInvocation
 import { DatabaseRuntimeFailureEncodingError } from "../src/DatabaseRuntimeFailureEncodingError";
 import { DatabaseRuntimeFailurePayloadLimitError } from "../src/DatabaseRuntimeFailurePayloadLimitError";
 import { DatabaseStorageResponseOwnershipError } from "../src/DatabaseStorageResponseOwnershipError";
+import {
+  databaseStorageResponseStateErrorReason,
+  DatabaseStorageResponseStateError,
+} from "../src/DatabaseStorageResponseStateError";
 import { DatabaseRuntimeConnection } from "../src/DatabaseRuntimeConnection";
 import { DatabaseRuntimeConnectionLimits } from "../src/DatabaseRuntimeConnectionLimits";
 import { DatabaseRuntimeConnectionShutdownError } from "../src/DatabaseRuntimeConnectionShutdownError";
@@ -456,7 +460,7 @@ test("runtime connection routes storage services through the StorageKit dispatch
   assert.deepEqual([...response], [4, 5, 9]);
 });
 
-test("runtime connection bounds cumulative payload count per active invocation set", async () => {
+test("storage responses do not consume connection-owned payload count", async () => {
   const runtimeFailureReasons: string[] = [];
   const connection = await DatabaseRuntimeConnection.instantiate(
     emptyRuntimeProgram,
@@ -477,19 +481,14 @@ test("runtime connection bounds cumulative payload count per active invocation s
     (reason) => runtimeFailureReasons.push(reason)
   );
 
-  await assert.rejects(
-    connection.execute(new Uint8Array([1])),
-    (error: unknown) => error instanceof DatabaseRuntimePayloadLimitError
-      && error.reason === databaseRuntimePayloadLimitReason.payloadCount
-      && error.limit === 2
-  );
   assert.deepEqual(
-    runtimeFailureReasons,
-    ["Database runtime payload count exceeds 2 per active invocation set"]
+    [...(await connection.execute(new Uint8Array([1])))],
+    [9]
   );
+  assert.deepEqual(runtimeFailureReasons, []);
 });
 
-test("runtime connection bounds cumulative payload bytes per active invocation set", async () => {
+test("storage responses do not consume connection-owned payload bytes", async () => {
   const connection = await DatabaseRuntimeConnection.instantiate(
     emptyRuntimeProgram,
     { dispatchBytes: () => new Uint8Array([9]) },
@@ -503,17 +502,15 @@ test("runtime connection bounds cumulative payload bytes per active invocation s
       maximumResponseBytes: 1,
       maximumStorageRequestBytes: 1,
       maximumStorageResponseBytes: 1,
-      maximumPayloadCountPerInvocationSet: 4,
-      maximumPayloadBytesPerInvocationSet: 6,
+      maximumPayloadCountPerInvocationSet: 1,
+      maximumPayloadBytesPerInvocationSet: 1,
     }),
     () => undefined
   );
 
-  await assert.rejects(
-    connection.execute(new Uint8Array([1])),
-    (error: unknown) => error instanceof DatabaseRuntimePayloadLimitError
-      && error.reason === databaseRuntimePayloadLimitReason.payloadBytes
-      && error.limit === 6
+  assert.deepEqual(
+    [...(await connection.execute(new Uint8Array([1])))],
+    [9]
   );
 });
 
@@ -558,21 +555,14 @@ test("runtime connection rejects an oversized initial address space", async () =
   );
 });
 
-test("zero storage response payload address is terminal without corrupting address zero", async () => {
+test("storage response length mismatch is terminal", async () => {
   const runtimeFailureReasons: string[] = [];
-  let runtimeAddressSpace: WebAssembly.Memory | undefined;
   const connection = await DatabaseRuntimeConnection.instantiate(
     emptyRuntimeProgram,
     { dispatchBytes: () => new Uint8Array([4, 5, 9]) },
     resolvingAlarmScheduler(),
     controllableDatabaseRuntimeInstantiator(
-      { kind: "zeroStorageResponsePayloadAddress" },
-      {
-        didCreateRuntimeAddressSpace(createdAddressSpace) {
-          runtimeAddressSpace = createdAddressSpace;
-          new Uint8Array(createdAddressSpace.buffer, 0, 8).fill(0xa5);
-        },
-      }
+      { kind: "storageResponseLengthMismatch" }
     ),
     limits(),
     (reason) => runtimeFailureReasons.push(reason)
@@ -580,19 +570,15 @@ test("zero storage response payload address is terminal without corrupting addre
 
   await assert.rejects(
     connection.execute(new Uint8Array([1])),
-    (error: unknown) => error instanceof DatabaseRuntimeInvocationError
-      && error.status === databaseCompletionStatus.runtimeFailed
-      && error.message
-        === "Database runtime returned a zero storage response payload address"
-  );
-  assert.ok(runtimeAddressSpace !== undefined);
-  assert.deepEqual(
-    [...new Uint8Array(runtimeAddressSpace.buffer, 0, 8)],
-    Array(8).fill(0xa5)
+    (error: unknown) => error instanceof DatabaseStorageResponseStateError
+      && error.reason
+        === databaseStorageResponseStateErrorReason.responseLengthMismatch
+      && error.expectedByteCount === 3
+      && error.actualByteCount === 4
   );
   assert.deepEqual(
     runtimeFailureReasons,
-    ["Database runtime returned a zero storage response payload address"]
+    ["Storage response length 4 does not match 3"]
   );
 });
 
@@ -1163,10 +1149,10 @@ test("runtime connection resource limits reject inconsistent configurations", ()
       maximumRequestBytes: 8,
       maximumResponseBytes: 8,
       maximumStorageResponseBytes: 8,
-      maximumPayloadBytesPerInvocationSet: 8,
+      maximumPayloadBytesPerInvocationSet: 7,
     }),
     (error: unknown) => error instanceof RangeError
-      && error.message === "maximumPayloadBytesPerInvocationSet must be at least 12"
+      && error.message === "maximumPayloadBytesPerInvocationSet must be at least 8"
   );
   assert.throws(
     () => new DatabaseRuntimeConnectionLimits({

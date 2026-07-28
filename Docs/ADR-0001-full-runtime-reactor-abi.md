@@ -35,7 +35,9 @@ progress in a persistent reactor without a host-driven executor wake-up.
 
 | Module and name | Signature | Responsibility |
 |---|---|---|
-| `storage_host.dispatch` | `(u32, u32) -> u32` | Execute one synchronous StorageKit host frame and return a length-prefixed frame |
+| `storage_host.dispatch` | `(u32, u32) -> u32` | Execute one synchronous StorageKit request, retain the host response, and return its exact byte count |
+| `storage_host.receive` | `(u32, u32) -> void` | Copy the pending host response into final Swift-owned storage |
+| `storage_host.discard` | `() -> void` | Release a pending response rejected before receipt |
 | `database_host.complete` | `(u32, u32, u32, u32) -> void` | Complete a startup, invocation, or alarm call |
 | `database_executor.schedule` | `(u32, f64) -> void` | Schedule a task immediately or after a monotonic delay |
 | `database_alarm.schedule` | `(i64, u32) -> void` | Persist the next absolute UTC job wake-up as seconds and nanoseconds since the Unix epoch |
@@ -83,15 +85,19 @@ Ownership is part of ABI v1 and is not inferred from pointer lifetime.
 | `database_host.complete` payload | Swift lends the bytes for the synchronous service call; JavaScript copies them once into its heap before returning |
 | `storage_host.dispatch` request | Swift lends the bytes for the synchronous service call; JavaScript must not retain the view |
 | Storage dispatcher result | JavaScript owns an independent view that does not alias the borrowed runtime request |
-| `storage_host.dispatch` response frame | JavaScript allocates the frame through `database_alloc`; Swift adopts it and releases it through `database_dealloc` when the final response slice is destroyed |
+| `storage_host.dispatch` response | JavaScript retains the independent response after returning its exact length |
+| `storage_host.receive` destination | Swift lends its final `ByteString` allocation for one synchronous, exact-length copy; JavaScript releases the pending response before returning |
+| `storage_host.discard` | JavaScript releases the pending response without copying after Swift rejects its length |
 
 Swift request and storage-response decoders retain immutable allocation owners
 and create constant-time range views. They do not materialize field arrays.
 The completion copy is required because JavaScript cannot retain a view whose
 Swift owner may be destroyed immediately after the service call returns. The
-StorageKit response copy into runtime address space is required because the source and
-destination are different heaps. No additional whole-frame copy is permitted
-on either path.
+StorageKit response copy into runtime address space is required because the
+source and destination are different heaps. Swift allocates the final response
+storage only after `dispatch` returns; JavaScript never re-enters a reactor
+export from a host import. No additional whole-frame copy is permitted on
+either path.
 
 The HTTP reader reuses a sole body chunk directly. Multiple non-contiguous
 stream chunks are consolidated exactly once because DatabaseWire execution
@@ -121,6 +127,12 @@ aggregate memory limit.
    same FIFO queue. Infrastructure failures escape the handler so Cloudflare's
    alarm retry mechanism can invoke a later runtime generation. TypeScript does
    not inspect persisted job state or implement retry policy.
+
+The release gate executes the same optimized reactor in Node and workerd. The
+workerd path must cross Worker routing, Durable Object RPC, the FIFO runtime
+owner, the synchronous StorageKit host ABI, and Durable Object SQLite. It then
+restarts workerd with the same persisted state and verifies that a DatabaseWire
+query observes the prior mutation.
 
 ## Consequences
 

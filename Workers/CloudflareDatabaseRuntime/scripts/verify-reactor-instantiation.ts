@@ -20,6 +20,17 @@ if (artifactPath === undefined) {
   );
 }
 const verifiedArtifactPath = artifactPath;
+const requestVectorURL = new URL(
+  "../../../Protocol/runtime-verification-requests-v1.json",
+  import.meta.url
+);
+
+interface RuntimeVerificationRequests {
+  capabilitiesDescribe: number[];
+  schemaDescribe: number[];
+  mutationExecute: number[];
+  queryExecute: number[];
+}
 
 async function verifyRuntime(): Promise<void> {
   const compilationStartedAt = performance.now();
@@ -78,27 +89,30 @@ async function verifyRuntime(): Promise<void> {
   }
   const startupMilliseconds = performance.now() - startupStartedAt;
 
-  const capabilitiesRequestID = 0x0102_0304_0506_0708n;
-  const capabilitiesOperation = 0x0101;
-  const capabilitiesRequest = makeEmptyRequest(
-    capabilitiesOperation,
-    capabilitiesRequestID
-  );
+  const requests = await loadRuntimeVerificationRequests();
   const invocationStartedAt = performance.now();
-  const capabilitiesResponse = await connection.execute(capabilitiesRequest);
-  verifySuccessResponse(
-    capabilitiesResponse,
-    capabilitiesRequestID,
-    capabilitiesOperation
+  const capabilitiesResponse = await executeVerifiedRequest(
+    connection,
+    "capabilitiesDescribe",
+    requests.capabilitiesDescribe
   );
-
-  const schemaRequestID = 0x1112_1314_1516_1718n;
-  const schemaOperation = 0x0102;
-  const schemaResponse = await connection.execute(
-    makeEmptyRequest(schemaOperation, schemaRequestID)
+  const schemaResponse = await executeVerifiedRequest(
+    connection,
+    "schemaDescribe",
+    requests.schemaDescribe
   );
-  verifySuccessResponse(schemaResponse, schemaRequestID, schemaOperation);
   verifyPayloadContains(schemaResponse, "RuntimeVerificationDocument");
+  const mutationResponse = await executeVerifiedRequest(
+    connection,
+    "mutationExecute",
+    requests.mutationExecute
+  );
+  const queryResponse = await executeVerifiedRequest(
+    connection,
+    "queryExecute",
+    requests.queryExecute
+  );
+  verifyPayloadContains(queryResponse, "Cloudflare runtime");
   const invocationMilliseconds = performance.now() - invocationStartedAt;
   if (terminalFailure !== null) {
     throw new Error(`runtime entered terminal failure: ${terminalFailure}`);
@@ -111,27 +125,84 @@ async function verifyRuntime(): Promise<void> {
     addressSpaceBytes,
     capabilitiesResponseBytes: capabilitiesResponse.byteLength,
     schemaResponseBytes: schemaResponse.byteLength,
+    mutationResponseBytes: mutationResponse.byteLength,
+    queryResponseBytes: queryResponse.byteLength,
     compilationMilliseconds,
     startupMilliseconds,
     invocationMilliseconds,
   }, null, 2));
 }
 
-function makeEmptyRequest(
-  operation: number,
-  requestID: bigint
-): Uint8Array {
-  const request = new Uint8Array(23);
-  request.set([0x44, 0x42, 0x57, 0x52], 0);
-  const bytes = new DataView(request.buffer);
-  bytes.setUint16(4, 1, true);
-  bytes.setUint8(6, 1);
-  bytes.setBigUint64(7, requestID, true);
-  bytes.setUint16(15, operation, true);
-  bytes.setUint8(17, 0);
-  bytes.setUint8(18, 0);
-  bytes.setUint32(19, 0, true);
-  return request;
+async function loadRuntimeVerificationRequests(
+): Promise<RuntimeVerificationRequests> {
+  const parsed: unknown = JSON.parse(await readFile(requestVectorURL, "utf8"));
+  if (!isRuntimeVerificationRequests(parsed)) {
+    throw new Error("runtime verification request vector is invalid");
+  }
+  return parsed;
+}
+
+function isRuntimeVerificationRequests(
+  value: unknown
+): value is RuntimeVerificationRequests {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const vectors = value as Record<string, unknown>;
+  const names = [
+    "capabilitiesDescribe",
+    "schemaDescribe",
+    "mutationExecute",
+    "queryExecute",
+  ];
+  return Object.keys(vectors).length === names.length
+    && names.every((name) => isByteArray(vectors[name]));
+}
+
+function isByteArray(value: unknown): value is number[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every(
+      (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255
+    );
+}
+
+async function executeVerifiedRequest(
+  connection: DatabaseRuntimeConnection,
+  name: string,
+  requestBytes: number[]
+): Promise<Uint8Array> {
+  const request = Uint8Array.from(requestBytes);
+  const requestHeader = readRequestHeader(request);
+  let response: Uint8Array;
+  try {
+    response = await connection.execute(request);
+  } catch (error) {
+    throw new Error(`runtime request ${name} failed`, { cause: error });
+  }
+  verifySuccessResponse(
+    response,
+    requestHeader.requestID,
+    requestHeader.operation
+  );
+  return response;
+}
+
+function readRequestHeader(
+  request: Uint8Array
+): { requestID: bigint; operation: number } {
+  if (request.byteLength < 17) {
+    throw new Error("runtime request vector is shorter than the wire header");
+  }
+  const bytes = new DataView(
+    request.buffer,
+    request.byteOffset,
+    request.byteLength
+  );
+  return {
+    requestID: bytes.getBigUint64(7, true),
+    operation: bytes.getUint16(15, true),
+  };
 }
 
 function verifySuccessResponse(

@@ -81,10 +81,7 @@ export class DatabaseRuntimeConnectionLimits {
       "maximumPayloadBytesPerInvocationSet",
       DatabaseRuntimeConnectionLimits.maximumPayloadBytesPerInvocationSet
     );
-    const minimumPayloadByteLimit = Math.max(
-      this.maximumRequestBytes,
-      this.maximumStorageResponseBytes + 4
-    );
+    const minimumPayloadByteLimit = this.maximumRequestBytes;
     if (this.maximumPayloadBytesPerInvocationSet < minimumPayloadByteLimit) {
       throw new RangeError(
         `maximumPayloadBytesPerInvocationSet must be at least ${minimumPayloadByteLimit}`

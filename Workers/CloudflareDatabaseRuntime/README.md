@@ -12,7 +12,7 @@ flowchart LR
   DO --> Queue["DatabaseRequestQueue"]
   Queue --> Connection["DatabaseRuntimeConnection"]
   Connection --> Runtime["Application database runtime"]
-  Runtime --> Storage["storage_host.dispatch"]
+  Runtime --> Storage["storage_host.dispatch / receive / discard"]
   Storage --> SQLite["Durable Object SQLite"]
 ```
 
@@ -58,7 +58,7 @@ the currently registered wait.
 | Runtime limit | Default | Responsibility |
 |---|---:|---|
 | Request stream chunks | `1024` | Bounds stream metadata before the one required consolidation copy |
-| Payloads per active invocation set | `4096` | Bounds runtime payload reservations, including StorageKit responses |
+| Payloads per active invocation set | `4096` | Bounds connection-owned invocation payload reservations |
 | Payload bytes per active invocation set | `33554432` | Bounds cumulative payload transfer work |
 | Runtime address space | `67108864` | Rejects runtime instances whose address space exceeds the budget |
 | Scheduled tasks | `4096` | Bounds retained immediate tasks and timers |
@@ -90,7 +90,7 @@ failures remain visible to Cloudflare's alarm retry behavior.
 | Runtime invocation input | One runtime allocation receives the request and transfers to runtime ownership |
 | Runtime completion | The connection borrows the payload during completion delivery and creates one JavaScript-owned result |
 | Storage request | The SQLite adapter borrows the runtime range for the synchronous dispatch only |
-| Storage response | The adapter returns independent storage; one cross-heap copy creates the runtime-owned response allocation |
+| Storage response | Dispatch retains an independent host response; after dispatch returns, Swift allocates final storage and receive performs one cross-heap copy |
 
 ## Validation
 
@@ -104,18 +104,22 @@ sh scripts/verify-runtime-feasibility.sh
 
 The feasibility gate builds the full app-specific verification reactor with
 Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
-executes startup and a typed DatabaseWire request against the synchronous
-StorageKit SQLite host, and enforces Worker size, isolate address-space, and
-startup limits. `SWIFT_EXECUTABLE`, `SWIFT_WASM_SDK`, and
+executes typed schema, mutation, and query requests first against the Node
+reference host and then through an actual workerd Worker, Durable Object RPC,
+and Durable Object SQLite. The workerd process is restarted against the same
+persisted state and must still return the inserted entity. The gate also
+enforces Worker size, isolate address-space, and startup limits.
+`SWIFT_EXECUTABLE`, `SWIFT_WASM_SDK`, and
 `DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
 locations. Relative build paths are resolved from the repository root. The
 release gate disables index-store generation and uses one build job so the
 fixed Swift 6.4 WASI toolchain produces the same reactor without concurrent
 compiler resource failures.
 
-The application repository owns its concrete runtime application, Durable
-Object subclass, Wrangler configuration, persistence E2E, and authentication
-policy. It runs the same gate for its app-specific reactor before deployment.
+The application repository owns its concrete runtime application, production
+Durable Object subclass, Wrangler configuration, routing, and authentication
+policy. It runs the same workerd-backed gate for its app-specific reactor
+before deployment.
 
 The normative fixed boundary is documented in
 [`Docs/ADR-0001-full-runtime-reactor-abi.md`](../../Docs/ADR-0001-full-runtime-reactor-abi.md).

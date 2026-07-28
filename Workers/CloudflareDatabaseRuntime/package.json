@@ -23,7 +23,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && node --import tsx --test \"test/**/*.test.ts\""
+    "test": "npm run typecheck && node --import tsx --test \"test/**/*.test.ts\"",
+    "smoke:workerd": "node scripts/smoke-workerd-full-runtime.mjs"
   },
   "dependencies": {
     "@storage-kit/cloudflare-durable-object-storage-host": "file:../../../storage-kit/Workers/CloudflareDurableObjectStorageHost"

@@ -73,6 +73,12 @@ runtime_measurements=$(
 )
 printf '%s\n' "$runtime_measurements"
 
+workerd_measurements=$(
+    cd "$repository_root/Workers/CloudflareDatabaseRuntime"
+    DATABASE_RUNTIME_ARTIFACT="$optimized_artifact" npm run --silent smoke:workerd
+)
+printf '%s\n' "$workerd_measurements"
+
 address_space_bytes=$(
     printf '%s' "$runtime_measurements" |
         node -e '
