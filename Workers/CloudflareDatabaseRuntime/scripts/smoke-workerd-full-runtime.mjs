@@ -45,6 +45,9 @@ try {
   const queryResponse = await execute(vectors.queryExecute);
   verifySuccessResponse(queryResponse, vectors.queryExecute);
   assertPayloadContains(queryResponse, "Cloudflare runtime");
+  const graphQueryResponse = await execute(vectors.queryAsk);
+  verifySuccessResponse(graphQueryResponse, vectors.queryAsk);
+  assertBooleanResponse(graphQueryResponse, true);
 
   await stopWorker(worker);
   worker = null;
@@ -54,6 +57,9 @@ try {
   const persistedQueryResponse = await execute(vectors.queryExecute);
   verifySuccessResponse(persistedQueryResponse, vectors.queryExecute);
   assertPayloadContains(persistedQueryResponse, "Cloudflare runtime");
+  const persistedGraphQueryResponse = await execute(vectors.queryAsk);
+  verifySuccessResponse(persistedGraphQueryResponse, vectors.queryAsk);
+  assertBooleanResponse(persistedGraphQueryResponse, true);
 
   console.log(JSON.stringify({
     runtimeArtifactPath,
@@ -63,6 +69,9 @@ try {
     schemaResponseBytes: schemaResponse.byteLength,
     mutationResponseBytes: mutationResponse.byteLength,
     queryResponseBytes: queryResponse.byteLength,
+    graphQueryResponseBytes: graphQueryResponse.byteLength,
+    persistedGraphQueryResponseBytes:
+      persistedGraphQueryResponse.byteLength,
   }, null, 2));
 } finally {
   if (worker !== null) {
@@ -169,6 +178,12 @@ function assertPayloadContains(response, expectedText) {
     }
   }
   assert.fail(`response does not contain ${expectedText}`);
+}
+
+function assertBooleanResponse(response, expectedValue) {
+  assert.equal(response.byteLength, 24);
+  assert.equal(response[22], 2);
+  assert.equal(response[23], expectedValue ? 1 : 0);
 }
 
 async function stopWorker(child) {

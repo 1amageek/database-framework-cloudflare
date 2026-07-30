@@ -130,7 +130,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             completeFailure(
                 callID: callID,
                 status: .startupFailed,
-                message: "Database runtime creation failed: \(String(describing: error))"
+                message: "Database runtime creation failed"
             )
         }
     }
@@ -150,7 +150,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             completeFailure(
                 callID: callID,
                 status: .invalidPayload,
-                message: "Database request payload is invalid: \(String(describing: error))"
+                message: "Database request payload is invalid"
             )
             return
         }

@@ -876,6 +876,51 @@ test("runtime connection installs cancellable clock services and routes resume",
   connection.shutdown();
 });
 
+test("runtime connection supplies monotonic wall-clock and unsigned random values", async () => {
+  let registeredRuntimeServices: WebAssembly.Imports | null = null;
+  const connection = await DatabaseRuntimeConnection.instantiate(
+    emptyRuntimeProgram,
+    { dispatchBytes: (bytes) => bytes },
+    resolvingAlarmScheduler(),
+    controllableDatabaseRuntimeInstantiator(
+      { kind: "echo" },
+      {
+        didRegisterRuntimeServices: (runtimeServices) => {
+          registeredRuntimeServices = runtimeServices;
+        },
+      }
+    ),
+    limits(),
+    () => undefined,
+    controlledInvocationTimer().timer
+  );
+  const runtimeServices = registeredRuntimeServices as WebAssembly.Imports | null;
+  assert.notEqual(runtimeServices, null);
+
+  const monotonicNanoseconds = runtimeServices?.database_clock
+    ?.monotonic_nanoseconds;
+  const wallTimeMilliseconds = runtimeServices?.database_clock
+    ?.wall_time_milliseconds;
+  const randomUInt64 = runtimeServices?.database_random?.random_u64;
+  assert.equal(typeof monotonicNanoseconds, "function");
+  assert.equal(typeof wallTimeMilliseconds, "function");
+  assert.equal(typeof randomUInt64, "function");
+
+  const monotonic = (monotonicNanoseconds as () => bigint)();
+  const wallTime = (wallTimeMilliseconds as () => bigint)();
+  assert.ok(monotonic >= 0n);
+  assert.ok(wallTime >= BigInt(Date.now() - 1_000));
+  assert.ok(wallTime <= BigInt(Date.now() + 1_000));
+
+  for (let index = 0; index < 128; index += 1) {
+    const value = (randomUInt64 as () => bigint)();
+    assert.ok(value >= 0n);
+    assert.ok(value <= 0xffff_ffff_ffff_ffffn);
+  }
+
+  connection.shutdown();
+});
+
 test("clock wait IDs preserve unsigned WebAssembly i32 bit patterns", async () => {
   let registeredRuntimeServices: WebAssembly.Imports | null = null;
   const resumedWaitIDs: number[] = [];

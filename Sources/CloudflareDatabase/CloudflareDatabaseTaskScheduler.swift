@@ -164,28 +164,6 @@ final class CloudflareDatabaseTaskScheduler: SerialExecutor, Sendable {
         }
     }
 
-    private static func delayMilliseconds<C: Clock>(
-        _ delay: C.Duration,
-        clock: C
-    ) -> Double {
-        if clock is ContinuousClock,
-           let duration = delay as? ContinuousClock.Duration {
-            return milliseconds(duration)
-        }
-        if clock is SuspendingClock,
-           let duration = delay as? SuspendingClock.Duration {
-            return milliseconds(duration)
-        }
-        preconditionFailure(
-            "Cloudflare database scheduler supports continuous and suspending clocks"
-        )
-    }
-
-    private static func milliseconds(_ duration: Duration) -> Double {
-        let components = duration.components
-        return Double(components.seconds) * 1_000
-            + Double(components.attoseconds) / 1_000_000_000_000_000
-    }
 }
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
@@ -204,33 +182,6 @@ extension CloudflareDatabaseTaskScheduler: MainExecutor {
     func run() throws {}
 
     func stop() {}
-}
-
-@available(
-    macOS 9999,
-    iOS 9999,
-    watchOS 9999,
-    tvOS 9999,
-    visionOS 9999,
-    *
-)
-@_spi(ExperimentalCustomExecutors)
-extension CloudflareDatabaseTaskScheduler: SchedulingExecutor {
-    func enqueue<C: Clock>(
-        _ task: consuming ExecutorJob,
-        after delay: C.Duration,
-        tolerance: C.Duration?,
-        clock: C
-    ) {
-        _ = tolerance
-        schedule(
-            UnownedJob(task),
-            delayMilliseconds: Self.delayMilliseconds(
-                delay,
-                clock: clock
-            )
-        )
-    }
 }
 
 @available(

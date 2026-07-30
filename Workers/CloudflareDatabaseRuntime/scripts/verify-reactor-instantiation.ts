@@ -30,6 +30,7 @@ interface RuntimeVerificationRequests {
   schemaDescribe: number[];
   mutationExecute: number[];
   queryExecute: number[];
+  queryAsk: number[];
 }
 
 async function verifyRuntime(): Promise<void> {
@@ -113,6 +114,12 @@ async function verifyRuntime(): Promise<void> {
     requests.queryExecute
   );
   verifyPayloadContains(queryResponse, "Cloudflare runtime");
+  const graphQueryResponse = await executeVerifiedRequest(
+    connection,
+    "queryAsk",
+    requests.queryAsk
+  );
+  verifyBooleanResponse(graphQueryResponse, true);
   const invocationMilliseconds = performance.now() - invocationStartedAt;
   if (terminalFailure !== null) {
     throw new Error(`runtime entered terminal failure: ${terminalFailure}`);
@@ -127,6 +134,7 @@ async function verifyRuntime(): Promise<void> {
     schemaResponseBytes: schemaResponse.byteLength,
     mutationResponseBytes: mutationResponse.byteLength,
     queryResponseBytes: queryResponse.byteLength,
+    graphQueryResponseBytes: graphQueryResponse.byteLength,
     compilationMilliseconds,
     startupMilliseconds,
     invocationMilliseconds,
@@ -154,6 +162,7 @@ function isRuntimeVerificationRequests(
     "schemaDescribe",
     "mutationExecute",
     "queryExecute",
+    "queryAsk",
   ];
   return Object.keys(vectors).length === names.length
     && names.every((name) => isByteArray(vectors[name]));
@@ -260,6 +269,17 @@ function verifyPayloadContains(
     }
   }
   throw new Error(`runtime response does not contain ${expectedText}`);
+}
+
+function verifyBooleanResponse(
+  response: Uint8Array,
+  expectedValue: boolean
+): void {
+  if (response.byteLength !== 24
+      || response[22] !== 2
+      || response[23] !== (expectedValue ? 1 : 0)) {
+    throw new Error("runtime response is not the expected boolean result");
+  }
 }
 
 class NodeSQLiteStorage implements StorageKitSQLStorage {

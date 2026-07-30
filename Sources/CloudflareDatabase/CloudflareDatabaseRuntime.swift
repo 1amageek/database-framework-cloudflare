@@ -100,7 +100,7 @@ public actor CloudflareDatabaseRuntime {
             fail(
                 callID: callID,
                 status: .startupFailed,
-                message: "Database runtime startup failed: \(String(describing: error))"
+                message: "Database runtime startup failed"
             )
         }
     }
@@ -204,7 +204,7 @@ public actor CloudflareDatabaseRuntime {
                     fail(
                         callID: callID,
                         status: .runtimeFailed,
-                        message: "Database alarm execution failed: \(String(describing: error))"
+                        message: "Database alarm execution failed"
                     )
                 }
             }
@@ -239,17 +239,17 @@ public actor CloudflareDatabaseRuntime {
                 status: .cancelled,
                 message: "Database invocation was cancelled"
             )
-        } catch DatabaseEndpointError.invalidRequestFrame(let error) {
+        } catch DatabaseEndpointError.invalidRequestFrame {
             fail(
                 callID: invocation.callID,
                 status: .invalidRequestFrame,
-                message: "Database request frame is invalid: \(String(describing: error))"
+                message: "Database request frame is invalid"
             )
         } catch {
             fail(
                 callID: invocation.callID,
                 status: .runtimeFailed,
-                message: "Database runtime failed: \(String(describing: error))"
+                message: "Database runtime failed"
             )
         }
     }

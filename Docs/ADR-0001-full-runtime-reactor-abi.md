@@ -7,7 +7,7 @@
 ## Decision
 
 Each application compiles its schema, migrations, commands, and full
-`database-framework` service graph into one standard WASI reactor. The
+`database-framework` service graph into one Swift 6.4 Embedded WASM reactor. The
 Durable Object owns one reactor instance and invokes it through an opaque
 binary `DatabaseWire` boundary.
 
@@ -41,8 +41,11 @@ progress in a persistent reactor without a host-driven executor wake-up.
 | `database_host.complete` | `(u32, u32, u32, u32) -> void` | Complete a startup, invocation, or alarm call |
 | `database_executor.schedule` | `(u32, f64) -> void` | Schedule a task immediately or after a monotonic delay |
 | `database_alarm.schedule` | `(i64, u32) -> void` | Persist the next absolute UTC job wake-up as seconds and nanoseconds since the Unix epoch |
+| `database_clock.monotonic_nanoseconds` | `() -> i64` | Read monotonic host time for storage deadlines |
+| `database_clock.wall_time_milliseconds` | `() -> i64` | Read Unix wall time for persisted database timestamps |
 | `database_clock.schedule` | `(u32, f64) -> void` | Register one cancellable monotonic wait |
 | `database_clock.cancel` | `(u32) -> void` | Cancel one registered monotonic wait |
+| `database_random.random_u64` | `() -> i64` | Supply cryptographically random UUID bits |
 
 All pointers are offsets into exported linear memory. Every byte count and
 aggregate frame is checked against an independently configured limit before
@@ -131,14 +134,22 @@ aggregate memory limit.
 The release gate executes the same optimized reactor in Node and workerd. The
 workerd path must cross Worker routing, Durable Object RPC, the FIFO runtime
 owner, the synchronous StorageKit host ABI, and Durable Object SQLite. It then
-restarts workerd with the same persisted state and verifies that a DatabaseWire
-query observes the prior mutation.
+executes a DatabaseWire mutation for an OWL-class entity and verifies the
+generated RDF projection through a SPARQL ASK request. After restarting workerd
+with the same persisted state, both the document query and SPARQL ASK request
+must observe the prior mutation.
 
 ## Consequences
 
 - A generic runtime artifact is not shipped by this package. The application
   owns the concrete executable target because schema and command registration
   are compile-time dependencies.
+- Foundation adapters and native SQLite, PostgreSQL, and FoundationDB backends
+  are excluded from the Embedded reactor. Canonical primitive, database, and
+  storage contracts remain linked; platform conversion and native backend
+  products remain outside the runtime graph. Native verification composition
+  may select those host adapters without changing the Embedded dependency
+  graph.
 - `DatabaseWire` and the StorageKit host wire remain separate protocols with
   separate limits.
 - ABI v1 has no negotiation or compatibility branch. Any ABI change requires

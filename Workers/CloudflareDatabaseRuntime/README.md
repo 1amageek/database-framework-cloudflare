@@ -106,15 +106,18 @@ The feasibility gate builds the full app-specific verification reactor with
 Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
 executes typed schema, mutation, and query requests first against the Node
 reference host and then through an actual workerd Worker, Durable Object RPC,
-and Durable Object SQLite. The workerd process is restarted against the same
-persisted state and must still return the inserted entity. The gate also
-enforces Worker size, isolate address-space, and startup limits.
-`SWIFT_EXECUTABLE`, `SWIFT_WASM_SDK`, and
+and Durable Object SQLite. The mutation creates an OWL-class entity, and a
+SPARQL ASK request must observe its generated RDF projection. The workerd
+process is restarted against the same persisted state and must still return
+both the inserted entity and the RDF query result. The gate also enforces
+Worker size, isolate address-space, startup limits, required Full Runtime link
+products, and exclusion of host-only adapters.
+`SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and
 `DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
 locations. Relative build paths are resolved from the repository root. The
 release gate disables index-store generation and uses one build job so the
-fixed Swift 6.4 WASI toolchain produces the same reactor without concurrent
-compiler resource failures.
+fixed Swift 6.4 Embedded WASI toolchain produces the same reactor without
+concurrent compiler resource failures.
 
 The application repository owns its concrete runtime application, production
 Durable Object subclass, Wrangler configuration, routing, and authentication

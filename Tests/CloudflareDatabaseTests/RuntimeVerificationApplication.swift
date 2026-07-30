@@ -5,6 +5,8 @@ import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
 import DatabaseServer
+import DatabaseServerFoundation
+import StorageKitSystemClock
 
 final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     let storageScope: StorageWireScope
@@ -35,10 +37,16 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 entities: [try RuntimeVerificationDocument.schemaEntity]
             ),
             configuration: DBConfiguration(
-                backend: .custom(storageEngine)
+                backend: .custom(storageEngine),
+                monotonicClock: SystemStorageClock(),
+                wallClock: RealtimeDatabaseWallClock()
             ),
             runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
-                persistableTypes: [RuntimeVerificationDocument.self]
+                entityRuntimes: [
+                    try DatabaseFrameworkRuntime.entity(
+                        RuntimeVerificationDocument.self
+                    )
+                ]
             ),
             security: .disabled
         )

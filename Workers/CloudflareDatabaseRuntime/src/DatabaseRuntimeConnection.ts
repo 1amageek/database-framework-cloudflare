@@ -136,6 +136,9 @@ export class DatabaseRuntimeConnection {
               connection.taskScheduler.schedule(taskID, delayMilliseconds),
           };
           runtimeServices.database_clock = {
+            monotonic_nanoseconds: () =>
+              BigInt(Math.floor(performance.now() * 1_000_000)),
+            wall_time_milliseconds: () => BigInt(Date.now()),
             schedule: (waitID: number, delayMilliseconds: number) =>
               connection.clockService.schedule(
                 normalizedClockWaitID(waitID),
@@ -143,6 +146,9 @@ export class DatabaseRuntimeConnection {
               ),
             cancel: (waitID: number) =>
               connection.clockService.cancel(normalizedClockWaitID(waitID)),
+          };
+          runtimeServices.database_random = {
+            random_u64: () => randomUInt64(),
           };
           runtimeServices.database_alarm = {
             schedule: (
@@ -713,6 +719,12 @@ export class DatabaseRuntimeConnection {
     }
     return requireDatabaseRuntimeEndpoints(this.runtimeInstance);
   }
+}
+
+function randomUInt64(): bigint {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return new DataView(bytes.buffer).getBigUint64(0, false);
 }
 
 function asError(error: unknown): Error {

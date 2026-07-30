@@ -4,7 +4,7 @@ Cloudflare deployment support for the full
 [`database-framework`](https://github.com/1amageek/database-framework) runtime.
 
 An application compiles its schema, migrations, indexes, commands, and server
-services into a standard WASI reactor. A Durable Object owns one persistent
+services into a Swift 6.4 Embedded WASM reactor. A Durable Object owns one persistent
 runtime instance and one SQLite database. TypeScript provides scheduling,
 bounded byte transfer, and platform services; database semantics remain in
 Swift.
@@ -201,15 +201,20 @@ npm test
 
 The full feasibility gate also launches workerd twice against one persisted
 Durable Object state directory. It verifies Durable Object RPC, the full Swift
-reactor, StorageKit SQLite, and query visibility after process restart:
+reactor, StorageKit SQLite, an OWL projection queried through SPARQL, and both
+document and RDF-index visibility after process restart:
 
 ```bash
 sh scripts/verify-runtime-feasibility.sh
 ```
 
 Build the application-specific runtime with a Swift 6.4 host toolchain and its
-matching WASI SDK. A host compiler and SDK from different snapshots are not
-binary-module compatible.
+matching Embedded WASI SDK. A host compiler and SDK from different snapshots
+are not binary-module compatible. The release gate also rejects
+`DatabaseTypesFoundation`, `DatabaseKitFoundation`, `StorageKitFoundation`, and
+native database backends if they appear in the reactor link inputs. It also
+requires the canonical wire, full server, graph, ontology, relationship, and
+every built-in index product to be present in those inputs.
 
 ## Repository layout
 

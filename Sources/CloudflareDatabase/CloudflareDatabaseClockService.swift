@@ -34,7 +34,6 @@ final class CloudflareDatabaseClockService: Sendable {
     }
 
     func sleep(for duration: Duration) async throws {
-        try Task.checkCancellation()
         guard duration > .zero else {
             return
         }

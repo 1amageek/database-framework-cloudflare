@@ -8,7 +8,7 @@ private let runtimeEntrypoint: CloudflareDatabaseRuntimeEntrypoint = {
         )
     } catch {
         preconditionFailure(
-            "Runtime verification entrypoint creation failed: \(error)"
+            "Runtime verification entrypoint creation failed"
         )
     }
 }()

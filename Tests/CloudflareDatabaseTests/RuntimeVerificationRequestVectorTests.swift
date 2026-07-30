@@ -86,6 +86,22 @@ struct RuntimeVerificationRequestVectorTests {
                     )
                 )
             ),
+            (
+                "queryAsk",
+                try DatabaseWireEncoder().encodeRequest(
+                    DatabaseOperations.queryExecute,
+                    requestID: 64,
+                    metadata: OperationRequestMetadata(),
+                    request: QueryExecuteOperation.Request(
+                        input: .text(
+                            language: .sparql,
+                            statement: """
+                                ASK { GRAPH <https://example.invalid/graph/runtime-verification> { ?document <https://example.invalid/ontology/title> "Cloudflare runtime" } }
+                                """
+                        )
+                    )
+                )
+            ),
         ]
 
         #expect(Set(vectors.keys) == Set(expected.map(\.0)))
