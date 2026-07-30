@@ -23,7 +23,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0730.0",
+            from: "26.0731.0",
             traits: []
         ),
         .package(
