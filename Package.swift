@@ -1,6 +1,12 @@
 // swift-tools-version: 6.4
 import PackageDescription
 
+let hostPlatforms: [Platform] = [
+    .macOS,
+    .iOS,
+    .linux,
+]
+
 let package = Package(
     name: "database-framework-cloudflare",
     platforms: [
@@ -13,20 +19,20 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/1amageek/database-types.git",
-            from: "26.0729.0"
+            from: "26.0730.0"
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0729.0",
+            from: "26.0730.0",
             traits: []
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0729.0"
+            from: "26.0730.0"
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0729.0"
+            from: "26.0730.0"
         ),
     ],
     targets: [
@@ -57,16 +63,34 @@ let package = Package(
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
+                .product(
+                    name: "DatabaseServerFoundation",
+                    package: "database-framework",
+                    condition: .when(platforms: hostPlatforms)
+                ),
                 .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
                 .product(name: "CloudflareDurableObjectStorageWire", package: "storage-kit"),
+                .product(
+                    name: "StorageKitSystemClock",
+                    package: "storage-kit",
+                    condition: .when(platforms: hostPlatforms)
+                ),
             ],
             path: "Tests/CloudflareDatabaseRuntimeVerification",
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
             ],
             linkerSettings: [
+                .linkedLibrary(
+                    "swiftUnicodeDataTables",
+                    .when(platforms: [.wasi])
+                ),
                 .unsafeFlags([
+                    "-Xlinker",
+                    "--undefined=__cxa_pure_virtual",
+                    "-Xlinker",
+                    "-lc++abi",
                     "-Xclang-linker",
                     "-mexec-model=reactor",
                     "-Xlinker",
@@ -86,6 +110,11 @@ let package = Package(
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
+                .product(
+                    name: "DatabaseServerFoundation",
+                    package: "database-framework",
+                    condition: .when(platforms: hostPlatforms)
+                ),
                 .product(name: "DatabaseWire", package: "database-kit"),
                 .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
@@ -95,6 +124,11 @@ let package = Package(
                     package: "storage-kit"
                 ),
                 .product(name: "StorageKit", package: "storage-kit"),
+                .product(
+                    name: "StorageKitSystemClock",
+                    package: "storage-kit",
+                    condition: .when(platforms: hostPlatforms)
+                ),
             ]
         ),
     ]
