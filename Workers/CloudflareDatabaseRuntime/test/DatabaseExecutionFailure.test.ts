@@ -8,7 +8,7 @@ import {
 } from "../src/DatabaseExecutionFailure";
 import { DatabaseExecutionInputError } from "../src/DatabaseExecutionInputError";
 import { DatabaseInvocationTimeoutError } from "../src/DatabaseInvocationTimeoutError";
-import { DatabaseRequestQueueCapacityError } from "../src/DatabaseRequestQueueCapacityError";
+import { DatabaseInvocationCapacityError } from "../src/DatabaseInvocationCapacityError";
 import { DatabaseRuntimeInvocationError } from "../src/DatabaseRuntimeInvocationError";
 
 test("database execution failures have a stable remote message contract", () => {
@@ -39,8 +39,8 @@ test("database execution failures have a stable remote message contract", () => 
       databaseExecutionFailureCode.invalidResponse,
     ],
     [
-      new DatabaseRequestQueueCapacityError({
-        reason: "pendingRequests",
+      new DatabaseInvocationCapacityError({
+        reason: "pendingInvocations",
         limit: 1,
         pending: 1,
         requested: 1,

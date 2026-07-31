@@ -1086,25 +1086,86 @@ test("a non-empty successful alarm payload poisons its runtime generation", asyn
 });
 
 test("runtime connection preserves runtime alarm failures for platform retry", async () => {
+  const runtimeFailureReasons: string[] = [];
+  const connection = await DatabaseRuntimeConnection.instantiate(
+    emptyRuntimeProgram,
+    { dispatchBytes: (bytes) => bytes },
+    resolvingAlarmScheduler(),
+    controllableDatabaseRuntimeInstantiator({
+      kind: "alarmFailureOnce",
+      status: databaseCompletionStatus.scheduledWorkFailed,
+      message: "scheduled work failed",
+    }),
+    limits(),
+    (reason) => runtimeFailureReasons.push(reason)
+  );
+
+  await assert.rejects(
+    connection.alarm(),
+    (error: unknown) => error instanceof DatabaseRuntimeInvocationError
+      && error.status === databaseCompletionStatus.scheduledWorkFailed
+      && error.message === "scheduled work failed"
+  );
+  await connection.alarm();
+  assert.deepEqual(
+    await connection.execute(new Uint8Array([1, 2, 3])),
+    new Uint8Array([1, 2, 3])
+  );
+  assert.deepEqual(runtimeFailureReasons, []);
+});
+
+test("scheduled-work failure status from a request poisons the runtime", async () => {
+  const runtimeFailureReasons: string[] = [];
   const connection = await DatabaseRuntimeConnection.instantiate(
     emptyRuntimeProgram,
     { dispatchBytes: (bytes) => bytes },
     resolvingAlarmScheduler(),
     controllableDatabaseRuntimeInstantiator({
       kind: "failure",
-      status: databaseCompletionStatus.runtimeFailed,
-      message: "scheduled work failed",
+      status: databaseCompletionStatus.scheduledWorkFailed,
+      message: "invalid request completion",
     }),
     limits(),
-    () => undefined
+    (reason) => runtimeFailureReasons.push(reason)
   );
+  const expectedMessage =
+    "Database runtime returned a scheduled-work failure for a request call";
 
   await assert.rejects(
-    connection.alarm(),
-    (error: unknown) => error instanceof DatabaseRuntimeInvocationError
-      && error.status === databaseCompletionStatus.runtimeFailed
-      && error.message === "scheduled work failed"
+    connection.execute(new Uint8Array([1])),
+    (error: unknown) => error instanceof Error
+      && error.message === expectedMessage
   );
+  await assert.rejects(
+    connection.execute(new Uint8Array([2])),
+    (error: unknown) => error instanceof Error
+      && error.message === expectedMessage
+  );
+  assert.deepEqual(runtimeFailureReasons, [expectedMessage]);
+});
+
+test("scheduled-work failure status cannot complete runtime startup", async () => {
+  const runtimeFailureReasons: string[] = [];
+  const expectedMessage =
+    "Database runtime returned a scheduled-work failure for a startup call";
+
+  await assert.rejects(
+    DatabaseRuntimeConnection.instantiate(
+      emptyRuntimeProgram,
+      { dispatchBytes: (bytes) => bytes },
+      resolvingAlarmScheduler(),
+      controllableDatabaseRuntimeInstantiator({
+        kind: "startupFailure",
+        status: databaseCompletionStatus.scheduledWorkFailed,
+        message: "invalid startup completion",
+      }),
+      limits(),
+      (reason) => runtimeFailureReasons.push(reason)
+    ),
+    (error: unknown) => error instanceof Error
+      && error.message === expectedMessage
+  );
+  assert.deepEqual(runtimeFailureReasons, [expectedMessage]);
 });
 
 test("runtime completion waits for Durable Object alarm persistence", async () => {

@@ -9,7 +9,7 @@ byte transfer; database semantics remain in Swift.
 flowchart LR
   Worker["Application Worker"] --> RPC["Durable Object RPC"]
   RPC --> DO["CloudflareDatabaseDurableObject"]
-  DO --> Queue["DatabaseRequestQueue"]
+  DO --> Queue["DatabaseRuntimeEntryQueue"]
   Queue --> Connection["DatabaseRuntimeConnection"]
   Connection --> Runtime["Application database runtime"]
   Runtime --> Storage["storage_host.dispatch / receive / discard"]
@@ -36,7 +36,11 @@ checks.
 Persistent job wake-ups use Durable Object alarms. Swift requests an absolute
 timestamp through `database_alarm.schedule`; the platform service validates
 and persists it with `setAlarm`. The Durable Object `alarm()` method enters the
-same FIFO queue as DatabaseWire invocations.
+same FIFO queue as DatabaseWire invocations. Before entering Swift, the host
+persists a safety wake. A successful delivery replaces that wake with the
+earliest timestamp requested during the delivery, or deletes it when no work
+remains. A failed delivery preserves the safety wake and rethrows so platform
+retry and application-level recovery remain independent.
 
 Suspending Swift tasks use `database_clock.schedule` and
 `database_clock.cancel`. One `AbortController` is owned per wait, Cloudflare's
@@ -52,6 +56,7 @@ the currently registered wait.
 | `DATABASE_MAX_PENDING_REQUESTS` | `64` | Maximum admitted requests, including the active request |
 | `DATABASE_MAX_QUEUED_REQUEST_BYTES` | `16777216` | Maximum aggregate retained request backing bytes |
 | `DATABASE_INVOCATION_TIMEOUT_MILLISECONDS` | `30000` | Terminal deadline for startup, invocation, or alarm completion |
+| `DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS` | `60000` | Safety wake retained after a failed alarm delivery; must exceed the invocation deadline |
 
 `DatabaseRuntimeConnectionLimits` applies additional independent bounds:
 
@@ -76,11 +81,17 @@ invalid completion, scheduler failure, clock failure, or ownership violation
 terminally poisons the connection and aborts the Durable Object generation.
 The same runtime instance is never entered again.
 
+A scheduled-work operation that completes with `scheduledWorkFailed` does not
+poison the connection. The Durable Object retains its safety wake and rethrows
+the failure so the same persisted job can be attempted again. Invocation
+timeouts remain terminal for the current runtime generation, while the safety
+wake survives that generation.
+
 Failure payloads use strict UTF-8. Malformed or scalar-truncated text is a
 terminal protocol failure rather than a replacement-character fallback.
 
-Alarm completion waits for Durable Object `setAlarm` persistence. Persistence
-failures remain visible to Cloudflare's alarm retry behavior.
+Alarm entry and completion wait for Durable Object alarm persistence.
+Persistence failures remain visible to Cloudflare's alarm retry behavior.
 
 ## Zero-copy contract
 
@@ -102,22 +113,32 @@ cd ../..
 sh scripts/verify-runtime-feasibility.sh
 ```
 
-The feasibility gate builds the full app-specific verification reactor with
-Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
+The gate uses `AllRuntimeFeatures` by default. An application-specific
+verification selects its compile-time runtime traits explicitly:
+
+```bash
+DATABASE_RUNTIME_TRAITS=GraphIndexes \
+  sh scripts/verify-runtime-feasibility.sh
+```
+
+The feasibility gate builds the selected app-specific verification reactor
+with Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
 executes typed schema, mutation, and query requests first against the Node
 reference host and then through an actual workerd Worker, Durable Object RPC,
 and Durable Object SQLite. The mutation creates an OWL-class entity, and a
 SPARQL ASK request must observe its generated RDF projection. The workerd
 process is restarted against the same persisted state and must still return
 both the inserted entity and the RDF query result. The gate also enforces
-Worker size, isolate address-space, startup limits, required Full Runtime link
-products, and exclusion of host-only adapters.
+Worker size, isolate address-space, startup limits, required selected feature
+products, exclusion of unselected feature products, and exclusion of host-only
+adapters.
 `SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and
 `DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
-locations. Relative build paths are resolved from the repository root. The
-release gate disables index-store generation and uses one build job so the
-fixed Swift 6.4 Embedded WASI toolchain produces the same reactor without
-concurrent compiler resource failures.
+locations. `DATABASE_RUNTIME_TRAITS` is a comma-separated list of public
+runtime feature traits. Relative build paths are resolved from the repository
+root. The release gate disables index-store generation and uses one build job
+so the fixed Swift 6.4 Embedded WASI toolchain produces the same reactor
+without concurrent compiler resource failures.
 
 The application repository owns its concrete runtime application, production
 Durable Object subclass, Wrangler configuration, routing, and authentication

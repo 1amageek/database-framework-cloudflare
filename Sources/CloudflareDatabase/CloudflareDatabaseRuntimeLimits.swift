@@ -1,6 +1,7 @@
 /// Bounded resource policy for one persistent database runtime.
 public struct CloudflareDatabaseRuntimeLimits: Sendable, Hashable {
     public static let protocolMaximumFrameBytes = 16 * 1_024 * 1_024
+    public static let protocolMinimumErrorBytes = 256
     public static let protocolMaximumErrorBytes = 16 * 1_024
     public static let protocolMaximumPendingInvocations = 1_024
 
@@ -28,6 +29,7 @@ public struct CloudflareDatabaseRuntimeLimits: Sendable, Hashable {
         try Self.validate(
             maximumErrorBytes,
             field: "maximumErrorBytes",
+            minimum: Self.protocolMinimumErrorBytes,
             maximum: Self.protocolMaximumErrorBytes
         )
         try Self.validate(
@@ -66,12 +68,14 @@ public struct CloudflareDatabaseRuntimeLimits: Sendable, Hashable {
     package static func validate(
         _ value: Int,
         field: String,
+        minimum: Int = 1,
         maximum: Int
     ) throws {
-        guard value > 0 else {
-            throw CloudflareDatabaseRuntimeLimitsError.nonPositive(
+        guard value >= minimum else {
+            throw CloudflareDatabaseRuntimeLimitsError.belowMinimum(
                 field: field,
-                value: value
+                value: value,
+                minimum: minimum
             )
         }
         guard value <= maximum else {

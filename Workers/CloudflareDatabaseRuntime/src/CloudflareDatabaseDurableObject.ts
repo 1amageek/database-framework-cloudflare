@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { StorageKitDurableObjectHost } from "@storage-kit/cloudflare-durable-object-storage-host";
 import {
+  databaseAlarmRecoveryDelayMilliseconds,
   databaseMaxPendingRequests,
   databaseMaxQueuedRequestBytes,
   databaseMaxRequestBytes,
@@ -8,7 +9,7 @@ import {
   databaseInvocationTimeoutMilliseconds,
   type DatabaseRuntimeLimitEnvironment,
 } from "./DatabaseRuntimeLimits";
-import { DatabaseRequestQueue } from "./DatabaseRequestQueue";
+import { DatabaseRuntimeEntryQueue } from "./DatabaseRuntimeEntryQueue";
 import { DurableObjectDatabaseAlarmScheduler } from "./DurableObjectDatabaseAlarmScheduler";
 import type {
   DatabaseRuntimeInstantiator,
@@ -29,7 +30,9 @@ export abstract class CloudflareDatabaseDurableObject<
   private readonly runtimeProgram: DatabaseRuntimeProgram;
   private readonly instantiateRuntime: DatabaseRuntimeInstantiator;
   private readonly connectionLimits: DatabaseRuntimeConnectionLimits;
-  private readonly requestQueue: DatabaseRequestQueue;
+  private readonly runtimeEntryQueue: DatabaseRuntimeEntryQueue;
+  private readonly alarmScheduler: DurableObjectDatabaseAlarmScheduler;
+  private readonly alarmRecoveryDelayMilliseconds: number;
 
   private runtimeConnectionPromise: Promise<DatabaseRuntimeConnection> | null = null;
 
@@ -47,16 +50,25 @@ export abstract class CloudflareDatabaseDurableObject<
     );
     this.runtimeProgram = runtimeProgram;
     this.instantiateRuntime = instantiateRuntime;
+    const invocationTimeoutMilliseconds =
+      databaseInvocationTimeoutMilliseconds(env);
     this.connectionLimits = new DatabaseRuntimeConnectionLimits({
       maximumRequestBytes: databaseMaxRequestBytes(env),
       maximumResponseBytes: databaseMaxResponseBytes(env),
-      invocationTimeoutMilliseconds:
-        databaseInvocationTimeoutMilliseconds(env),
+      invocationTimeoutMilliseconds,
     });
-    this.requestQueue = new DatabaseRequestQueue({
-      maximumPendingRequests: databaseMaxPendingRequests(env),
-      maximumPendingRequestBytes: databaseMaxQueuedRequestBytes(env),
+    this.runtimeEntryQueue = new DatabaseRuntimeEntryQueue({
+      maximumPendingInvocations: databaseMaxPendingRequests(env),
+      maximumPendingInvocationBytes: databaseMaxQueuedRequestBytes(env),
     });
+    this.alarmScheduler = new DurableObjectDatabaseAlarmScheduler(
+      this.ctx.storage
+    );
+    this.alarmRecoveryDelayMilliseconds =
+      databaseAlarmRecoveryDelayMilliseconds(
+        env,
+        invocationTimeoutMilliseconds
+      );
 
     this.ctx.blockConcurrencyWhile(async () => {
       try {
@@ -82,17 +94,20 @@ export abstract class CloudflareDatabaseDurableObject<
           "DatabaseWire request exceeds the Durable Object limit",
         );
       }
-      return await this.requestQueue.enqueue(requestBytes, async (ownedRequest) => {
-        const connection = await this.runtimeConnection();
-        const response = await connection.execute(ownedRequest);
-        if (response.byteLength > this.connectionLimits.maximumResponseBytes) {
-          throw new DatabaseRuntimeInvocationError(
-            databaseCompletionStatus.responseTooLarge,
-            "DatabaseWire response exceeds the Durable Object limit",
-          );
+      return await this.runtimeEntryQueue.enqueueInvocation(
+        requestBytes,
+        async (ownedRequest) => {
+          const connection = await this.runtimeConnection();
+          const response = await connection.execute(ownedRequest);
+          if (response.byteLength > this.connectionLimits.maximumResponseBytes) {
+            throw new DatabaseRuntimeInvocationError(
+              databaseCompletionStatus.responseTooLarge,
+              "DatabaseWire response exceeds the Durable Object limit",
+            );
+          }
+          return response;
         }
-        return response;
-      });
+      );
     } catch (error) {
       console.error("Database execution failed", error);
       throw encodeDatabaseExecutionFailure(error);
@@ -100,11 +115,24 @@ export abstract class CloudflareDatabaseDurableObject<
   }
 
   override async alarm(): Promise<void> {
-    return this.requestQueue.enqueue(
-      new Uint8Array(),
+    const recoveryLease = await this.alarmScheduler.prepareAlarmRecovery(
+      Date.now() + this.alarmRecoveryDelayMilliseconds
+    );
+    return this.runtimeEntryQueue.enqueueScheduledWork(
       async () => {
-        const connection = await this.runtimeConnection();
-        await connection.alarm();
+        try {
+          this.alarmScheduler.beginAlarmProcessing(recoveryLease);
+          const connection = await this.runtimeConnection();
+          await connection.alarm();
+          await this.alarmScheduler.completeAlarmProcessing(recoveryLease);
+        } catch (error) {
+          this.alarmScheduler.preserveAlarmRecovery(recoveryLease);
+          console.error(
+            "Database scheduled work failed; recovery alarm retained",
+            error
+          );
+          throw error;
+        }
       }
     );
   }
@@ -130,7 +158,7 @@ export abstract class CloudflareDatabaseDurableObject<
     return DatabaseRuntimeConnection.instantiate(
       this.runtimeProgram,
       this.storageAdapter,
-      new DurableObjectDatabaseAlarmScheduler(this.ctx.storage),
+      this.alarmScheduler,
       this.instantiateRuntime,
       this.connectionLimits,
       (reason) => this.ctx.abort(reason)

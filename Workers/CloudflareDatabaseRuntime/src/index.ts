@@ -1,4 +1,5 @@
 export { CloudflareDatabaseDurableObject } from "./CloudflareDatabaseDurableObject";
+export { databaseCompletionStatus } from "./DatabaseCompletionStatus";
 export type { DatabaseAlarmScheduler } from "./DatabaseAlarmScheduler";
 export { DatabaseAlarmScheduleError } from "./DatabaseAlarmScheduleError";
 export { databaseAlarmTimestampMilliseconds } from "./DatabaseAlarmTimestamp";
@@ -25,11 +26,10 @@ export {
 } from "./DatabaseRuntimeLimits";
 export type { DatabaseRuntimeLimitEnvironment } from "./DatabaseRuntimeLimits";
 export { DatabaseRequestStreamChunkLimitError } from "./DatabaseRequestStreamChunkLimitError";
-export { DatabaseRequestQueue } from "./DatabaseRequestQueue";
 export {
-  databaseRequestQueueCapacityReason,
-  DatabaseRequestQueueCapacityError,
-} from "./DatabaseRequestQueueCapacityError";
+  databaseInvocationCapacityReason,
+  DatabaseInvocationCapacityError,
+} from "./DatabaseInvocationCapacityError";
 export { DatabaseRuntimeInvocationError } from "./DatabaseRuntimeInvocationError";
 export {
   databaseExecutionFailureCode,

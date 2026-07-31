@@ -203,8 +203,8 @@ public actor CloudflareDatabaseRuntime {
                 } catch {
                     fail(
                         callID: callID,
-                        status: .runtimeFailed,
-                        message: "Database alarm execution failed"
+                        status: .scheduledWorkFailed,
+                        message: ScheduledWorkDiagnostic.message(for: error)
                     )
                 }
             }
@@ -271,7 +271,7 @@ public actor CloudflareDatabaseRuntime {
         completion.complete(
             callID: callID,
             status: status,
-            payload: ByteString.copyingUTF8(
+            payload: RuntimeFailurePayload.encode(
                 message,
                 maximumByteCount: limits.maximumErrorBytes
             )

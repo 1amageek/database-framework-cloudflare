@@ -1,7 +1,7 @@
 import { databaseCompletionStatus } from "./DatabaseCompletionStatus";
 import { DatabaseExecutionInputError } from "./DatabaseExecutionInputError";
 import { DatabaseInvocationTimeoutError } from "./DatabaseInvocationTimeoutError";
-import { DatabaseRequestQueueCapacityError } from "./DatabaseRequestQueueCapacityError";
+import { DatabaseInvocationCapacityError } from "./DatabaseInvocationCapacityError";
 import { DatabaseRuntimeConnectionShutdownError } from "./DatabaseRuntimeConnectionShutdownError";
 import { DatabaseRuntimeInvocationError } from "./DatabaseRuntimeInvocationError";
 
@@ -44,7 +44,7 @@ export function decodeDatabaseExecutionFailure(
 function classifyDatabaseExecutionFailure(
   error: unknown,
 ): DatabaseExecutionFailureCode {
-  if (error instanceof DatabaseRequestQueueCapacityError) {
+  if (error instanceof DatabaseInvocationCapacityError) {
     return databaseExecutionFailureCode.capacityExhausted;
   }
   if (error instanceof DatabaseExecutionInputError) {
@@ -70,6 +70,8 @@ function classifyDatabaseExecutionFailure(
       case databaseCompletionStatus.invalidPayload:
       case databaseCompletionStatus.runtimeFailed:
       case databaseCompletionStatus.success:
+        return databaseExecutionFailureCode.runtimeFailure;
+      case databaseCompletionStatus.scheduledWorkFailed:
         return databaseExecutionFailureCode.runtimeFailure;
       case databaseCompletionStatus.notStarted:
       case databaseCompletionStatus.alreadyStarted:

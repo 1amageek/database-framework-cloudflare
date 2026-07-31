@@ -13,4 +13,5 @@ public enum CloudflareDatabaseCompletionStatus: UInt32, Sendable, Hashable {
     case cancelled = 10
     case runtimeFailed = 11
     case invalidRequestFrame = 12
+    case scheduledWorkFailed = 13
 }

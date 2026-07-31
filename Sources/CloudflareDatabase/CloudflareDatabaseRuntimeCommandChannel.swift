@@ -101,7 +101,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         completion.complete(
             callID: callID,
             status: status,
-            payload: ByteString.copyingUTF8(
+            payload: RuntimeFailurePayload.encode(
                 message,
                 maximumByteCount: limits.maximumErrorBytes
             )

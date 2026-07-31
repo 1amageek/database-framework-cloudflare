@@ -36,6 +36,7 @@ struct CloudflareDatabaseCompletionStatusTests {
             "cancelled": Int(CloudflareDatabaseCompletionStatus.cancelled.rawValue),
             "runtimeFailed": Int(CloudflareDatabaseCompletionStatus.runtimeFailed.rawValue),
             "invalidRequestFrame": Int(CloudflareDatabaseCompletionStatus.invalidRequestFrame.rawValue),
+            "scheduledWorkFailed": Int(CloudflareDatabaseCompletionStatus.scheduledWorkFailed.rawValue),
         ]
     }
 }

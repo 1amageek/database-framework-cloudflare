@@ -6,12 +6,14 @@ export const databaseWireMaximumFrameBytes = 16 * 1024 * 1024;
 export const databaseMaximumQueuedRequestBytes = 64 * 1024 * 1024;
 export const databaseMaximumPendingRequests = 1024;
 export const databaseMaximumInvocationTimeoutMilliseconds = 30_000;
+export const databaseMaximumAlarmRecoveryDelayMilliseconds = 24 * 60 * 60 * 1_000;
 export const databaseMaximumRequestStreamChunks = 65_536;
 export const defaultDatabaseMaxRequestBytes = 4 * 1024 * 1024;
 export const defaultDatabaseMaxResponseBytes = 4 * 1024 * 1024;
 export const defaultDatabaseMaxQueuedRequestBytes = 16 * 1024 * 1024;
 export const defaultDatabaseMaxPendingRequests = 64;
 export const defaultDatabaseInvocationTimeoutMilliseconds = 30_000;
+export const defaultDatabaseAlarmRecoveryDelayMilliseconds = 60_000;
 export const defaultDatabaseMaxRequestStreamChunks = 1_024;
 
 export type DatabaseRuntimeLimitEnvironment = {
@@ -20,6 +22,7 @@ export type DatabaseRuntimeLimitEnvironment = {
   DATABASE_MAX_QUEUED_REQUEST_BYTES?: string | number | null;
   DATABASE_MAX_PENDING_REQUESTS?: string | number | null;
   DATABASE_INVOCATION_TIMEOUT_MILLISECONDS?: string | number | null;
+  DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS?: string | number | null;
 };
 
 export class DatabasePayloadTooLargeError extends Error {
@@ -97,6 +100,25 @@ export function databaseInvocationTimeoutMilliseconds(
     defaultDatabaseInvocationTimeoutMilliseconds,
     databaseMaximumInvocationTimeoutMilliseconds
   );
+}
+
+export function databaseAlarmRecoveryDelayMilliseconds(
+  env: DatabaseRuntimeLimitEnvironment | null | undefined,
+  invocationTimeoutMilliseconds: number
+): number {
+  const delay = configuredIntegerLimit(
+    env?.DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS,
+    "DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS",
+    defaultDatabaseAlarmRecoveryDelayMilliseconds,
+    databaseMaximumAlarmRecoveryDelayMilliseconds
+  );
+  if (delay <= invocationTimeoutMilliseconds) {
+    throw new DatabaseRuntimeLimitConfigurationError(
+      "DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS must exceed "
+        + "DATABASE_INVOCATION_TIMEOUT_MILLISECONDS"
+    );
+  }
+  return delay;
 }
 
 export function rejectOversizedContentLength(

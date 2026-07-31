@@ -37,7 +37,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 entities: [try RuntimeVerificationDocument.schemaEntity]
             ),
             configuration: DBConfiguration(
-                backend: .custom(storageEngine),
+                storageEngine: storageEngine,
                 monotonicClock: SystemStorageClock(),
                 wallClock: RealtimeDatabaseWallClock()
             ),
@@ -58,7 +58,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     ) async throws -> DatabaseServerRuntimeConfiguration {
         _ = container
         _ = jobScheduler
-        return DatabaseServerRuntimeConfiguration(
+        return try DatabaseServerRuntimeConfiguration(
             identity: DatabaseRuntimeIdentity(
                 version: "cloudflare-runtime-verification"
             ),

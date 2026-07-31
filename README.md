@@ -55,6 +55,33 @@ The application implements `CloudflareDatabaseApplication` and constructs a
 runtime artifact: application schema and command registration are compile-time
 dependencies.
 
+## Runtime feature traits
+
+Runtime feature selection is a compile-time application decision. This package
+exposes the same index and relationship trait names as `database-framework` and
+forwards only the selected traits to that dependency.
+
+| Trait | Linked framework capability |
+|---|---|
+| `ScalarIndexes` | Scalar indexes |
+| `VectorIndexes` | Vector indexes and SwiftHNSW |
+| `FullTextIndexes` | Full-text indexes |
+| `SpatialIndexes` | Spatial indexes |
+| `RankIndexes` | Rank indexes |
+| `BitmapIndexes` | Bitmap indexes |
+| `VersionIndexes` | Version indexes |
+| `PermutedIndexes` | Permuted indexes |
+| `GraphIndexes` | Graph, ontology, SPARQL, and required scalar indexes |
+| `AggregationIndexes` | Aggregation indexes |
+| `LeaderboardIndexes` | Leaderboard indexes |
+| `Relationships` | Relationship indexes |
+
+`AllRuntimeFeatures` enables every feature and remains the package default for
+general development. An application-specific reactor disables default traits
+and selects only its compiled schema and query requirements. Storage backend
+selection is not a runtime feature trait here: every Cloudflare reactor uses
+the StorageKit Durable Object adapter.
+
 ## TypeScript package
 
 The Worker package is in
@@ -143,13 +170,16 @@ the runtime path.
    full `DatabaseServerRuntime` are ready.
 3. Invocations and alarms use one FIFO queue, and Swift prevents concurrent
    runtime entry as a second invariant.
-4. Timeout, invalid completion, scheduler failure, clock failure, or ownership
-   violation terminally poisons the runtime connection and aborts the Durable
-   Object generation.
+4. Timeout, invalid completion, host scheduler failure, clock failure, or
+   ownership violation terminally poisons the runtime connection and aborts
+   the Durable Object generation. A completed Swift scheduled-work failure is
+   nonterminal and remains visible to Durable Object alarm retry handling.
 5. Initialization failure clears the cached connection promise so a later
    Durable Object generation can retry from persistent SQLite state.
-6. Alarm completion waits for `setAlarm` persistence; failures remain visible
-   to Cloudflare retry behavior.
+6. Before scheduled work starts, the host persists a safety alarm. Successful
+   work replaces it with the exact next wake requested by Swift or removes it
+   when no work remains. Failed or timed-out work leaves the safety alarm
+   durable and remains visible to Cloudflare retry behavior.
 
 ## Configuration
 
@@ -160,6 +190,7 @@ the runtime path.
 | `DATABASE_MAX_PENDING_REQUESTS` | `64` | Maximum admitted requests, including the active request |
 | `DATABASE_MAX_QUEUED_REQUEST_BYTES` | `16777216` | Maximum aggregate retained request backing bytes |
 | `DATABASE_INVOCATION_TIMEOUT_MILLISECONDS` | `30000` | Terminal deadline for startup, invocation, or alarm completion |
+| `DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS` | `60000` | Safety wake retained when one alarm delivery fails; must exceed the invocation deadline |
 
 `DatabaseRuntimeConnectionLimits` also bounds storage frames, runtime
 payload reservations, runtime address space, scheduled tasks, clock waits, and WASI
@@ -208,13 +239,21 @@ document and RDF-index visibility after process restart:
 sh scripts/verify-runtime-feasibility.sh
 ```
 
+The gate defaults to `AllRuntimeFeatures`. Set `DATABASE_RUNTIME_TRAITS` to a
+comma-separated trait list for an application-specific artifact:
+
+```bash
+DATABASE_RUNTIME_TRAITS=GraphIndexes \
+  sh scripts/verify-runtime-feasibility.sh
+```
+
 Build the application-specific runtime with a Swift 6.4 host toolchain and its
 matching Embedded WASI SDK. A host compiler and SDK from different snapshots
 are not binary-module compatible. The release gate also rejects
 `DatabaseTypesFoundation`, `DatabaseKitFoundation`, `StorageKitFoundation`, and
-native database backends if they appear in the reactor link inputs. It also
-requires the canonical wire, full server, graph, ontology, relationship, and
-every built-in index product to be present in those inputs.
+native database backends if they appear in the reactor link inputs. It requires
+each selected feature product and rejects every unselected feature product in
+the same link manifest before executing ABI, size, and workerd checks.
 
 ## Repository layout
 

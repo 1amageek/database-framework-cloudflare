@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  databaseAlarmRecoveryDelayMilliseconds,
   databaseMaxPendingRequests,
   databaseMaxQueuedRequestBytes,
   databaseMaxRequestBytes,
@@ -211,5 +212,24 @@ test("invalid configured limits fail fast", () => {
       DATABASE_INVOCATION_TIMEOUT_MILLISECONDS: 30_001,
     }),
     DatabaseRuntimeLimitConfigurationError
+  );
+  assert.throws(
+    () => databaseAlarmRecoveryDelayMilliseconds({
+      DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS: 30_000,
+    }, 30_000),
+    DatabaseRuntimeLimitConfigurationError
+  );
+});
+
+test("alarm recovery delay must outlive the invocation deadline", () => {
+  assert.equal(
+    databaseAlarmRecoveryDelayMilliseconds(undefined, 30_000),
+    60_000
+  );
+  assert.equal(
+    databaseAlarmRecoveryDelayMilliseconds({
+      DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS: 45_000,
+    }, 30_000),
+    45_000
   );
 });

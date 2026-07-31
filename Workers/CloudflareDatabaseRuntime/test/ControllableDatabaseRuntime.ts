@@ -8,6 +8,8 @@ import type {
 export type ControllableDatabaseRuntimeBehavior =
   | { kind: "echo" }
   | { kind: "failure"; status: number; message: string }
+  | { kind: "alarmFailureOnce"; status: number; message: string }
+  | { kind: "startupFailure"; status: number; message: string }
   | { kind: "failureBytes"; status: number; bytes: number[] }
   | { kind: "storage" }
   | { kind: "storageRepeated"; dispatchCount: number }
@@ -63,6 +65,7 @@ export function controllableDatabaseRuntimeInstantiator(
     let runtimeInstance: DatabaseRuntimeInstance;
     let nextTaskID = 1;
     let invocationCount = 0;
+    let alarmInvocationCount = 0;
     const scheduledTasks = new Map<number, () => void>();
     const runtimeServices: WebAssembly.Imports = {};
 
@@ -159,6 +162,14 @@ export function controllableDatabaseRuntimeInstantiator(
           );
           return;
         }
+        if (behavior.kind === "startupFailure") {
+          enqueueTask(() => deliverCompletionBytes(
+            callID,
+            behavior.status,
+            new TextEncoder().encode(behavior.message)
+          ));
+          return;
+        }
         enqueueTask(() => deliverRuntimeCompletion(runtimeServices, callID, 0, 0, 0));
       },
       database_invoke: (
@@ -188,8 +199,10 @@ export function controllableDatabaseRuntimeInstantiator(
         enqueueTask(() => {
           switch (behavior.kind) {
           case "echo":
+          case "alarmFailureOnce":
           case "hangOnceThenEcho":
           case "startupFailureWithPendingServices":
+          case "startupFailure":
           case "invalidRequestPayloadAddress":
           case "zeroRequestPayloadAddress":
             deliverCompletionBytes(callID, 0, requestBytes);
@@ -323,7 +336,17 @@ export function controllableDatabaseRuntimeInstantiator(
             && behavior.runtimeCommand === "alarm") {
           throw new Error(behavior.message);
         }
+        alarmInvocationCount += 1;
         enqueueTask(() => {
+          if (behavior.kind === "alarmFailureOnce"
+              && alarmInvocationCount === 1) {
+            deliverCompletionBytes(
+              callID,
+              behavior.status,
+              new TextEncoder().encode(behavior.message)
+            );
+            return;
+          }
           if (behavior.kind === "alarmPayload") {
             deliverCompletionBytes(
               callID,

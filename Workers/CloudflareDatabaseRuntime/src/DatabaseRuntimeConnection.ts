@@ -30,11 +30,14 @@ import {
 } from "./RequiredDatabaseRuntimeEndpoints";
 
 type PendingInvocation = {
+  purpose: DatabaseRuntimeCallPurpose;
   succeed(bytes: Uint8Array): void;
   fail(error: Error): void;
   timeoutHandle: unknown | null;
   completionReceived: boolean;
 };
+
+type DatabaseRuntimeCallPurpose = "startup" | "request" | "scheduledWork";
 
 type RuntimeCompletion = {
   payload: Uint8Array | null;
@@ -221,7 +224,7 @@ export class DatabaseRuntimeConnection {
         "DatabaseWire request exceeds the runtime connection limit"
       );
     }
-    return this.performInvocation((callID) => {
+    return this.performInvocation("request", (callID) => {
       const payloadAddress = this.payloadOwnership.reservePayload(
         requestBytes.byteLength
       );
@@ -250,7 +253,7 @@ export class DatabaseRuntimeConnection {
 
   async alarm(): Promise<void> {
     const runtimeEndpoints = this.runtimeEndpoints();
-    const payload = await this.performInvocation((callID) => {
+    const payload = await this.performInvocation("scheduledWork", (callID) => {
       runtimeEndpoints.alarm(callID);
     });
     if (payload.byteLength !== 0) {
@@ -286,7 +289,7 @@ export class DatabaseRuntimeConnection {
 
   private async start(): Promise<void> {
     const runtimeEndpoints = this.runtimeEndpoints();
-    const payload = await this.performInvocation((callID) => {
+    const payload = await this.performInvocation("startup", (callID) => {
       runtimeEndpoints.start(callID);
     });
     if (payload.byteLength !== 0) {
@@ -300,6 +303,7 @@ export class DatabaseRuntimeConnection {
   }
 
   private performInvocation(
+    purpose: DatabaseRuntimeCallPurpose,
     invoke: (callID: number) => void
   ): Promise<Uint8Array> {
     if (this.terminalError !== null) {
@@ -337,6 +341,7 @@ export class DatabaseRuntimeConnection {
     }
     return new Promise<Uint8Array>((resolve, reject) => {
       const pendingInvocation: PendingInvocation = {
+        purpose,
         succeed: resolve,
         fail: reject,
         timeoutHandle: null,
@@ -422,6 +427,16 @@ export class DatabaseRuntimeConnection {
     if (!Number.isInteger(status) || !knownCompletionStatuses.has(status)) {
       this.enterTerminal(
         new Error(`Database runtime returned unknown completion status ${status}`)
+      );
+      return;
+    }
+    if (status === databaseCompletionStatus.scheduledWorkFailed
+        && pendingInvocation.purpose !== "scheduledWork") {
+      this.enterTerminal(
+        new Error(
+          "Database runtime returned a scheduled-work failure for a "
+            + `${pendingInvocation.purpose} call`
+        )
       );
       return;
     }

@@ -1,4 +1,5 @@
 import CloudflareDatabase
+import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageTesting
 import DatabaseTypes
 import DatabaseWire
@@ -6,6 +7,21 @@ import Testing
 
 @Suite("Cloudflare database runtime", .serialized)
 struct CloudflareDatabaseRuntimeTests {
+    @Test("selected runtime traits satisfy the verification schema")
+    func composesSelectedRuntimeFeatures() async throws {
+        let application = try RuntimeVerificationApplication()
+        let storageEngine = try await CloudflareDurableObjectStorageEngine(
+            configuration: CloudflareDurableObjectStorageConfiguration(
+                scope: application.storageScope,
+                client: InMemoryCloudflareDurableObjectStorageClient(),
+                limits: application.storageLimits,
+                monotonicClock: CloudflareDatabaseMonotonicClock()
+            )
+        )
+
+        _ = try await application.makeContainer(storageEngine: storageEngine)
+    }
+
     @Test("startup exposes the canonical capabilities operation")
     func startsFullServerRuntime() async throws {
         let completion = RecordingCloudflareDatabaseCompletion()
@@ -164,7 +180,8 @@ struct CloudflareDatabaseRuntimeTests {
         let limits = try CloudflareDatabaseRuntimeLimits(
             maximumRequestBytes: 4,
             maximumResponseBytes: 4,
-            maximumErrorBytes: 64,
+            maximumErrorBytes:
+                CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes,
             maximumPendingInvocations: 1
         )
         let runtime = CloudflareDatabaseRuntime(
@@ -255,7 +272,43 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.start(callID: 40)
         await runtime.alarm(callID: 41)
 
-        #expect(completion.completion(callID: 41)?.status == .runtimeFailed)
+        let completionRecord = try #require(
+            completion.completion(callID: 41)
+        )
+        #expect(completionRecord.status == .scheduledWorkFailed)
+        #expect(
+            string(from: completionRecord.payload)
+                == "scheduled_work_failure.v1;stage=unclassified;cause=unclassified"
+        )
+    }
+
+    @Test("alarm failures retain typed job diagnostics")
+    func preservesScheduledWorkDiagnostic() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = CloudflareDatabaseRuntime(
+            application: try RuntimeVerificationApplication(
+                jobService: ScheduledWorkFailureJobService(
+                    failure: .corruptedState
+                )
+            ),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            jobScheduler: DiscardingDatabaseJobScheduler(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: completion
+            )
+        )
+
+        await runtime.start(callID: 42)
+        await runtime.alarm(callID: 43)
+
+        let completionRecord = try #require(
+            completion.completion(callID: 43)
+        )
+        #expect(completionRecord.status == .scheduledWorkFailed)
+        #expect(
+            string(from: completionRecord.payload)
+                == "scheduled_work_failure.v1;stage=processing_job;cause=job.corrupted_state"
+        )
     }
 
     @Test("the pending-operation limit includes the active operation")
@@ -330,6 +383,12 @@ struct CloudflareDatabaseRuntimeTests {
             return response
         case .failure(let error):
             throw error
+        }
+    }
+
+    private func string(from bytes: ByteString) -> String {
+        bytes.withUnsafeBytes { buffer in
+            String(decoding: buffer, as: UTF8.self)
         }
     }
 }

@@ -1,11 +1,98 @@
 // swift-tools-version: 6.4
 import PackageDescription
+import Foundation
+
+// The Embedded WASI SDK ships Unicode tables outside the default linker search
+// path. Resolve the archive from the fixed Swift 6.4 SDK so every reactor
+// build links the same standard-library support without adding it to the
+// runtime dependency graph.
+let unicodeDataArchiveDirectory: String? = {
+    let snapshot = "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm"
+    let relativePath = "\(snapshot).artifactbundle/\(snapshot)/wasm32-unknown-wasip1/swift.xctoolchain/usr/lib/swift/embedded/wasm32-unknown-wasip1"
+    let fileManager = FileManager.default
+    let home = fileManager.homeDirectoryForCurrentUser
+    let roots = [
+        home.appendingPathComponent("Library/org.swift.swiftpm/swift-sdks"),
+        home.appendingPathComponent(".swiftpm/swift-sdks"),
+    ]
+    for root in roots {
+        let directory = root.appendingPathComponent(relativePath)
+        let archive = directory.appendingPathComponent("libswiftUnicodeDataTables.a")
+        if fileManager.fileExists(atPath: archive.path) {
+            return directory.path
+        }
+    }
+    return nil
+}()
+
+let unicodeDataSupportLinkerSettings: [LinkerSetting] = {
+    guard let directory = unicodeDataArchiveDirectory else {
+        return [
+            .linkedLibrary(
+                "swiftUnicodeDataTables",
+                .when(platforms: [.wasi])
+            )
+        ]
+    }
+    return [
+        .unsafeFlags(
+            [
+                "-Xlinker",
+                "-L",
+                "-Xlinker",
+                directory,
+                "-Xlinker",
+                "-lswiftUnicodeDataTables",
+            ],
+            .when(platforms: [.wasi])
+        )
+    ]
+}()
 
 let hostPlatforms: [Platform] = [
     .macOS,
     .iOS,
     .linux,
 ]
+
+let databaseRuntimeFeatureNames: Set<String> = [
+    "ScalarIndexes",
+    "VectorIndexes",
+    "FullTextIndexes",
+    "SpatialIndexes",
+    "RankIndexes",
+    "BitmapIndexes",
+    "VersionIndexes",
+    "PermutedIndexes",
+    "GraphIndexes",
+    "AggregationIndexes",
+    "LeaderboardIndexes",
+    "Relationships",
+]
+
+var databaseRuntimeTraits = Set(
+    databaseRuntimeFeatureNames.map {
+        Trait.trait(name: $0)
+    }
+)
+databaseRuntimeTraits.insert(
+    .trait(
+        name: "AllRuntimeFeatures",
+        enabledTraits: databaseRuntimeFeatureNames
+    )
+)
+databaseRuntimeTraits.insert(
+    .default(enabledTraits: ["AllRuntimeFeatures"])
+)
+
+let databaseFrameworkDependencyTraits = Set(
+    databaseRuntimeFeatureNames.map {
+        Package.Dependency.Trait.trait(
+            name: $0,
+            condition: .when(traits: [$0])
+        )
+    }
+)
 
 let package = Package(
     name: "database-framework-cloudflare",
@@ -16,6 +103,7 @@ let package = Package(
     products: [
         .library(name: "CloudflareDatabase", targets: ["CloudflareDatabase"]),
     ],
+    traits: databaseRuntimeTraits,
     dependencies: [
         .package(
             url: "https://github.com/1amageek/database-types.git",
@@ -23,16 +111,16 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0731.0",
-            traits: []
+            from: "26.0731.3",
+            traits: databaseFrameworkDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0730.0"
+            from: "26.0731.0"
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0730.0"
+            from: "26.0731.0"
         ),
     ],
     targets: [
@@ -81,11 +169,7 @@ let package = Package(
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
             ],
-            linkerSettings: [
-                .linkedLibrary(
-                    "swiftUnicodeDataTables",
-                    .when(platforms: [.wasi])
-                ),
+            linkerSettings: unicodeDataSupportLinkerSettings + [
                 .unsafeFlags([
                     "-Xlinker",
                     "--undefined=__cxa_pure_virtual",

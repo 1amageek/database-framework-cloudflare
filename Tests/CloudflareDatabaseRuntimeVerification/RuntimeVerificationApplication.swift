@@ -35,7 +35,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 entities: [try RuntimeVerificationDocument.schemaEntity]
             ),
             configuration: DBConfiguration(
-                backend: .custom(storageEngine),
+                storageEngine: storageEngine,
                 monotonicClock: monotonicClock,
                 wallClock: wallClock,
                 logging: .disabled
@@ -71,7 +71,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 maximumStorageValueBytes: 1_048_576
             )
         )
-        return DatabaseServerRuntimeConfiguration(
+        return try DatabaseServerRuntimeConfiguration(
             identity: DatabaseRuntimeIdentity(
                 version: "cloudflare-runtime-verification"
             ),

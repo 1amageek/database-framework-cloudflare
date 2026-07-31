@@ -37,6 +37,8 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         try CloudflareDatabaseRuntimeLimits.validate(
             maximumErrorBytes,
             field: "maximumErrorBytes",
+            minimum: CloudflareDatabaseRuntimeLimits
+                .protocolMinimumErrorBytes,
             maximum: CloudflareDatabaseRuntimeLimits
                 .protocolMaximumErrorBytes
         )
@@ -204,7 +206,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         completion.complete(
             callID: callID,
             status: status,
-            payload: ByteString.copyingUTF8(
+            payload: RuntimeFailurePayload.encode(
                 message,
                 maximumByteCount: limits.maximumErrorBytes
             )

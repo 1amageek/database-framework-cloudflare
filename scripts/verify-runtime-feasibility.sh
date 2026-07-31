@@ -5,6 +5,7 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 swift_executable=${SWIFT_EXECUTABLE:-}
 swift_wasm_sdk=${SWIFT_EMBEDDED_WASM_SDK:-}
+runtime_traits=${DATABASE_RUNTIME_TRAITS:-AllRuntimeFeatures}
 build_path=${DATABASE_RUNTIME_BUILD_PATH:-"$repository_root/.build/release-gate"}
 case "$build_path" in
     /*) ;;
@@ -19,6 +20,44 @@ maximum_raw_bytes=64000000
 maximum_compressed_bytes=10000000
 maximum_address_space_bytes=128000000
 maximum_startup_milliseconds=1000
+
+case "$runtime_traits" in
+    "" | ","* | *"," | *",,"* | *[!A-Za-z,]*)
+        echo "DATABASE_RUNTIME_TRAITS must be a comma-separated trait list" >&2
+        exit 1
+        ;;
+esac
+for runtime_trait in $(printf '%s' "$runtime_traits" | tr ',' ' '); do
+    case "$runtime_trait" in
+        AllRuntimeFeatures | ScalarIndexes | VectorIndexes | \
+            FullTextIndexes | SpatialIndexes | RankIndexes | \
+            BitmapIndexes | VersionIndexes | PermutedIndexes | \
+            GraphIndexes | AggregationIndexes | LeaderboardIndexes | \
+            Relationships)
+            ;;
+        *)
+            echo "Unknown database runtime trait: $runtime_trait" >&2
+            exit 1
+            ;;
+    esac
+done
+
+runtime_trait_is_enabled() {
+    requested_trait=$1
+    case ",$runtime_traits," in
+        *",AllRuntimeFeatures,"* | *",$requested_trait,"*)
+            return 0
+            ;;
+    esac
+    if [ "$requested_trait" = "ScalarIndexes" ]; then
+        case ",$runtime_traits," in
+            *",GraphIndexes,"*)
+                return 0
+                ;;
+        esac
+    fi
+    return 1
+}
 
 if [ -z "$swift_wasm_sdk" ]; then
     swift_wasm_sdk=$(
@@ -60,11 +99,14 @@ printf '%s\n' "toolchain=$expected_snapshot"
 printf '%s\n' "swiftSDK=$swift_wasm_sdk"
 printf '%s\n' "target=wasm32-unknown-wasip1"
 printf '%s\n' "embeddedPlatform=Swift WASI SDK Embedded runtime"
+printf '%s\n' "traits=$runtime_traits"
 
 "$swift_executable" build \
     --configuration release \
     --swift-sdk "$swift_wasm_sdk" \
     --target CloudflareDatabaseRuntimeVerification \
+    --disable-default-traits \
+    --traits "$runtime_traits" \
     --build-path "$build_path" \
     --disable-index-store \
     -j 1 \
@@ -88,6 +130,60 @@ for required_product in \
     DatabaseEngine.o \
     DatabaseRuntime.o \
     DatabaseServer.o \
+    CloudflareDatabase.o
+do
+    if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
+        echo "The Embedded reactor is missing a required runtime product: $required_product" >&2
+        exit 1
+    fi
+done
+
+required_feature_products=""
+if runtime_trait_is_enabled ScalarIndexes; then
+    required_feature_products="$required_feature_products ScalarIndex.o"
+fi
+if runtime_trait_is_enabled VectorIndexes; then
+    required_feature_products="$required_feature_products VectorIndex.o SwiftHNSW.o"
+fi
+if runtime_trait_is_enabled FullTextIndexes; then
+    required_feature_products="$required_feature_products FullTextIndex.o"
+fi
+if runtime_trait_is_enabled SpatialIndexes; then
+    required_feature_products="$required_feature_products SpatialIndex.o"
+fi
+if runtime_trait_is_enabled RankIndexes; then
+    required_feature_products="$required_feature_products RankIndex.o"
+fi
+if runtime_trait_is_enabled BitmapIndexes; then
+    required_feature_products="$required_feature_products BitmapIndex.o"
+fi
+if runtime_trait_is_enabled VersionIndexes; then
+    required_feature_products="$required_feature_products VersionIndex.o"
+fi
+if runtime_trait_is_enabled PermutedIndexes; then
+    required_feature_products="$required_feature_products PermutedIndex.o"
+fi
+if runtime_trait_is_enabled GraphIndexes; then
+    required_feature_products="$required_feature_products GraphIndex.o OntologyIndex.o"
+fi
+if runtime_trait_is_enabled AggregationIndexes; then
+    required_feature_products="$required_feature_products AggregationIndex.o"
+fi
+if runtime_trait_is_enabled LeaderboardIndexes; then
+    required_feature_products="$required_feature_products LeaderboardIndex.o"
+fi
+if runtime_trait_is_enabled Relationships; then
+    required_feature_products="$required_feature_products RelationshipIndex.o"
+fi
+
+for required_product in $required_feature_products; do
+    if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
+        echo "The Embedded reactor is missing a selected runtime product: $required_product" >&2
+        exit 1
+    fi
+done
+
+for optional_product in \
     ScalarIndex.o \
     VectorIndex.o \
     SwiftHNSW.o \
@@ -97,18 +193,24 @@ for required_product in \
     BitmapIndex.o \
     VersionIndex.o \
     PermutedIndex.o \
-    AggregationIndex.o \
-    LeaderboardIndex.o \
-    RelationshipIndex.o \
     GraphIndex.o \
     OntologyIndex.o \
-    CloudflareDatabase.o
+    AggregationIndex.o \
+    LeaderboardIndex.o \
+    RelationshipIndex.o
 do
-    if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
-        echo "The Embedded reactor is missing a required runtime product: $required_product" >&2
-        exit 1
-    fi
+    case " $required_feature_products " in
+        *" $optional_product "*)
+            ;;
+        *)
+            if grep -q "/$optional_product$" "$reactor_link_inputs"; then
+                echo "The Embedded reactor links an unselected runtime product: $optional_product" >&2
+                exit 1
+            fi
+            ;;
+    esac
 done
+
 for forbidden_product in \
     DatabaseTypesFoundation.o \
     DatabaseKitFoundation.o \

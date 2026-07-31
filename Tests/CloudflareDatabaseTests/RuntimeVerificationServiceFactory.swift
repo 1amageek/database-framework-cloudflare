@@ -11,19 +11,32 @@ final class RuntimeVerificationServiceFactory: DatabaseServerServiceFactory {
         context: DatabaseServerServiceContext
     ) async throws -> DatabaseServerServices {
         let unavailable = UnavailableCloudflareDatabaseServices()
+        let statementExecutor = CanonicalDatabaseStatementMutationExecutor(
+            runtimeLimits: context.runtimeLimits
+        )
+        #if GraphIndexes
         return DatabaseServerServices(
-            statementExecutor: AnyDatabaseStatementMutationExecutor(
-                CanonicalDatabaseStatementMutationExecutor(
-                    runtimeLimits: context.runtimeLimits
-                )
+            graphOperations: GraphOperationServices(
+                statementExecutor: statementExecutor,
+                algorithm: AnyDatabaseGraphAlgorithmService(unavailable),
+                ontology: AnyDatabaseOntologyService(unavailable),
+                shacl: AnyDatabaseSHACLService(unavailable)
             ),
-            graphAlgorithmService: AnyDatabaseGraphAlgorithmService(unavailable),
-            ontologyService: AnyDatabaseOntologyService(unavailable),
-            shaclService: AnyDatabaseSHACLService(unavailable),
             readCommandRegistry: try DatabaseReadCommandRegistry(commands: []),
             writeCommandRegistry: try DatabaseWriteCommandRegistry(commands: []),
             maintenanceService: AnyDatabaseMaintenanceService(unavailable),
             jobService: jobService
         )
+        #else
+        return DatabaseServerServices(
+            statementExecutor: AnyDatabaseStatementMutationExecutor(
+                statementExecutor
+            ),
+            readCommandRegistry: try DatabaseReadCommandRegistry(commands: []),
+            writeCommandRegistry: try DatabaseWriteCommandRegistry(commands: []),
+            maintenanceService: AnyDatabaseMaintenanceService(unavailable),
+            jobService: jobService
+        )
+        #endif
     }
 }

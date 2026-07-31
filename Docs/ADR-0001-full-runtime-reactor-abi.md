@@ -16,6 +16,13 @@ scheduling, alarm persistence, and the synchronous StorageKit host ABI. It
 does not interpret database operations, schemas, queries, indexes, jobs, or
 transactions.
 
+The reactor is a full runtime because database semantics execute through
+`DBContainer`, `DatabaseRuntime`, and `DatabaseServerRuntime`; it does not mean
+that every optional index implementation must be linked into every
+application. SwiftPM traits define the application feature closure at compile
+time. `GraphIndexes` also selects `ScalarIndexes`, which graph storage requires.
+The fixed ABI and TypeScript host are independent of that feature closure.
+
 ## Exports
 
 | Export | Signature | Responsibility |
@@ -72,10 +79,14 @@ from this vector.
 | `cancelled` | 10 | The runtime cancelled the call before completion |
 | `runtimeFailed` | 11 | A runtime invariant or operation failed |
 | `invalidRequestFrame` | 12 | DatabaseWire decoding rejected the request frame |
+| `scheduledWorkFailed` | 13 | One scheduled-work delivery failed and may be retried by the host |
 
 Statuses that represent ownership, lifecycle, or runtime invariants terminate
 the active reactor generation. Request-specific validation failures remain
-nonterminal when the runtime can safely execute later calls.
+nonterminal when the runtime can safely execute later calls. A
+`scheduledWorkFailed` completion is also nonterminal: the Durable Object keeps
+the recovery alarm and reports the alarm failure to the platform without
+discarding an otherwise valid runtime generation.
 
 ## Byte ownership
 
