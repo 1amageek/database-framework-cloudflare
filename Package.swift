@@ -152,6 +152,11 @@ let package = Package(
                 .product(name: "DatabaseRuntime", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
                 .product(
+                    name: "VectorIndex",
+                    package: "database-framework",
+                    condition: .when(traits: ["VectorIndexes"])
+                ),
+                .product(
                     name: "DatabaseServerFoundation",
                     package: "database-framework",
                     condition: .when(platforms: hostPlatforms)
@@ -168,6 +173,10 @@ let package = Package(
             path: "Tests/CloudflareDatabaseRuntimeVerification",
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
+                .define(
+                    "CLOUDFLARE_RUNTIME_VECTOR_INDEXES",
+                    .when(traits: ["VectorIndexes"])
+                ),
             ],
             linkerSettings: unicodeDataSupportLinkerSettings + [
                 .unsafeFlags([

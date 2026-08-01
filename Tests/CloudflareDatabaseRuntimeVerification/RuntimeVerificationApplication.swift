@@ -5,6 +5,10 @@ import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
 import DatabaseServer
+#if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+import DatabaseTypes
+import VectorIndex
+#endif
 #if !arch(wasm32)
 import DatabaseServerFoundation
 import StorageKitSystemClock
@@ -30,9 +34,24 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         let monotonicClock = SystemStorageClock()
         let wallClock = RealtimeDatabaseWallClock()
         #endif
-        return try await DBContainer.open(
+        var entities = [try RuntimeVerificationDocument.schemaEntity]
+        var entityRuntimes = [
+            try DatabaseFrameworkRuntime.entity(
+                RuntimeVerificationDocument.self
+            )
+        ]
+        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+        entities.append(try RuntimeVerificationVectorDocument.schemaEntity)
+        entityRuntimes.append(
+            try DatabaseFrameworkRuntime.entity(
+                RuntimeVerificationVectorDocument.self
+            )
+        )
+        #endif
+
+        let container = try await DBContainer.open(
             for: try Schema(
-                entities: [try RuntimeVerificationDocument.schemaEntity]
+                entities: entities
             ),
             configuration: DBConfiguration(
                 storageEngine: storageEngine,
@@ -41,15 +60,53 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 logging: .disabled
             ),
             runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
-                entityRuntimes: [
-                    try DatabaseFrameworkRuntime.entity(
-                        RuntimeVerificationDocument.self
-                    )
-                ]
+                entityRuntimes: entityRuntimes
             ),
             security: .disabled
         )
+        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+        try await verifyVectorExecution(in: container)
+        #endif
+        return container
     }
+
+    #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+    private func verifyVectorExecution(in container: DBContainer) async throws {
+        let expected = RuntimeVerificationVectorDocument(
+            id: "embedded-vector-exact",
+            title: "Exact",
+            embedding: try Vector(float32: [2, 0])
+        )
+        let alternate = RuntimeVerificationVectorDocument(
+            id: "embedded-vector-alternate",
+            title: "Alternate",
+            embedding: try Vector(float32: [0, 2])
+        )
+        let context = container.newContext()
+        try context.upsert(expected)
+        try context.upsert(alternate)
+        try await context.save()
+
+        let results = try await context
+            .findSimilar(RuntimeVerificationVectorDocument.self)
+            .vector(
+                RuntimeVerificationVectorDocument.fields.embedding,
+                dimensions: 2
+            )
+            .query([1, 0], k: 1)
+            .metric(.dotProduct)
+            .execute()
+        guard results.count == 1,
+              results[0].item.id == expected.id,
+              results[0].distance.isFinite else {
+            throw RuntimeVerificationError.vectorExecutionMismatch
+        }
+
+        try context.delete(expected)
+        try context.delete(alternate)
+        try await context.save()
+    }
+    #endif
 
     func makeServerConfiguration(
         container: DBContainer,
