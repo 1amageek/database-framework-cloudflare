@@ -29,17 +29,11 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         self.jobService = AnyDatabaseJobService(jobService)
     }
 
-    func makeContainer(
-        storageEngine: CloudflareDurableObjectStorageEngine
-    ) async throws -> DBContainer {
-        return try await DBContainer.open(
-            for: try Schema(
+    func makeContainerDefinition() async throws
+        -> CloudflareDatabaseContainerDefinition {
+        CloudflareDatabaseContainerDefinition(
+            schema: try Schema(
                 entities: [try RuntimeVerificationDocument.schemaEntity]
-            ),
-            configuration: DBConfiguration(
-                storageEngine: storageEngine,
-                monotonicClock: SystemStorageClock(),
-                wallClock: RealtimeDatabaseWallClock()
             ),
             runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
                 entityRuntimes: [
@@ -48,7 +42,9 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                     )
                 ]
             ),
-            security: .disabled
+            security: .disabled,
+            monotonicClock: SystemStorageClock(),
+            wallClock: RealtimeDatabaseWallClock()
         )
     }
 

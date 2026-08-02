@@ -19,4 +19,58 @@ struct RuntimeVerificationVectorDocument {
         name: "RuntimeVerificationVectorDocument_embedding"
     )
 }
+
+@Persistable
+struct RuntimeVerificationIVFDocument {
+    #Directory<RuntimeVerificationIVFDocument>(
+        "verification",
+        "cloudflare-runtime-vectors-ivf"
+    )
+
+    var id: String
+    var title: String
+    var embedding: Vector
+
+    #Index(
+        .vector(dimensions: 2, metric: .dotProduct),
+        embedding: \RuntimeVerificationIVFDocument.embedding,
+        name: "RuntimeVerificationIVFDocument_embedding"
+    )
+}
+
+@Persistable
+struct RuntimeVerificationPQDocument {
+    #Directory<RuntimeVerificationPQDocument>(
+        "verification",
+        "cloudflare-runtime-vectors-pq"
+    )
+
+    var id: String
+    var title: String
+    var embedding: Vector
+
+    #Index(
+        .vector(dimensions: 2, metric: .dotProduct),
+        embedding: \RuntimeVerificationPQDocument.embedding,
+        name: "RuntimeVerificationPQDocument_embedding"
+    )
+}
+
+@Persistable
+struct RuntimeVerificationFlatDocument {
+    #Directory<RuntimeVerificationFlatDocument>(
+        "verification",
+        "cloudflare-runtime-vectors-flat"
+    )
+
+    var id: String
+    var title: String
+    var embedding: Vector
+
+    #Index(
+        .vector(dimensions: 2, metric: .dotProduct),
+        embedding: \RuntimeVerificationFlatDocument.embedding,
+        name: "RuntimeVerificationFlatDocument_embedding"
+    )
+}
 #endif

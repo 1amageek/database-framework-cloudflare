@@ -45,9 +45,11 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
             guard state.ownedPayloadCount < maximumOwnedPayloadCount else {
                 return 0
             }
-            let nextOwnedPayloadBytes = state.ownedPayloadBytes + requestedBytes
-            guard nextOwnedPayloadBytes >= state.ownedPayloadBytes,
-                  nextOwnedPayloadBytes <= maximumOwnedPayloadBytes else {
+            guard let nextOwnedPayloadBytes = Self.admittedOwnedPayloadByteCount(
+                currentByteCount: state.ownedPayloadBytes,
+                requestedByteCount: requestedBytes,
+                maximumByteCount: maximumOwnedPayloadBytes
+            ) else {
                 return 0
             }
             let reservedPayload = UnsafeMutableRawPointer.allocate(
@@ -167,5 +169,19 @@ public final class DatabaseInvocationPayloadOwnership: Sendable {
             return
         }
         payload.deallocate()
+    }
+
+    static func admittedOwnedPayloadByteCount(
+        currentByteCount: Int,
+        requestedByteCount: Int,
+        maximumByteCount: Int
+    ) -> Int? {
+        let (result, overflow) = currentByteCount.addingReportingOverflow(
+            requestedByteCount
+        )
+        guard !overflow, result <= maximumByteCount else {
+            return nil
+        }
+        return result
     }
 }

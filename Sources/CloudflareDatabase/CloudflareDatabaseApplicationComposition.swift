@@ -10,9 +10,8 @@ public final class CloudflareDatabaseApplicationComposition:
     public let storageScope: StorageWireScope
     public let storageLimits: CloudflareDurableObjectLimits
 
-    private let createContainer: @Sendable (
-        CloudflareDurableObjectStorageEngine
-    ) async throws -> DBContainer
+    private let createContainerDefinition: @Sendable () async throws
+        -> CloudflareDatabaseContainerDefinition
     private let createServerConfiguration: @Sendable (
         DBContainer,
         AnyDatabaseJobScheduler
@@ -23,8 +22,8 @@ public final class CloudflareDatabaseApplicationComposition:
     ) {
         self.storageScope = application.storageScope
         self.storageLimits = application.storageLimits
-        self.createContainer = { storageEngine in
-            try await application.makeContainer(storageEngine: storageEngine)
+        self.createContainerDefinition = {
+            try await application.makeContainerDefinition()
         }
         self.createServerConfiguration = { container, jobScheduler in
             try await application.makeServerConfiguration(
@@ -34,10 +33,9 @@ public final class CloudflareDatabaseApplicationComposition:
         }
     }
 
-    public func makeContainer(
-        storageEngine: CloudflareDurableObjectStorageEngine
-    ) async throws -> DBContainer {
-        try await createContainer(storageEngine)
+    public func makeContainerDefinition() async throws
+        -> CloudflareDatabaseContainerDefinition {
+        try await createContainerDefinition()
     }
 
     public func makeServerConfiguration(

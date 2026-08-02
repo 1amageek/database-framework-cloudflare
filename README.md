@@ -41,7 +41,7 @@ The package exports one library product, `CloudflareDatabase`.
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseApplication` | Supplies the application storage scope, DBContainer, migrations, and server configuration |
+| `CloudflareDatabaseApplication` | Supplies the application storage scope, unopened container definition, migrations, and server configuration |
 | `CloudflareDatabaseApplicationComposition` | Preserves the application-specific factories behind a stable runtime owner |
 | `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through the full server runtime |
 | `CloudflareDatabaseRuntimeCommandChannel` | Submits synchronous boundary commands to the actor-owned runtime |
@@ -64,7 +64,7 @@ forwards only the selected traits to that dependency.
 | Trait | Linked framework capability |
 |---|---|
 | `ScalarIndexes` | Scalar indexes |
-| `VectorIndexes` | Vector indexes and SwiftHNSW |
+| `VectorIndexes` | Flat, IVF, PQ, and the linked SwiftHNSW implementation; Cloudflare execution supports Flat/IVF/PQ only |
 | `FullTextIndexes` | Full-text indexes |
 | `SpatialIndexes` | Spatial indexes |
 | `RankIndexes` | Rank indexes |
@@ -81,6 +81,38 @@ general development. An application-specific reactor disables default traits
 and selects only its compiled schema and query requirements. Storage backend
 selection is not a runtime feature trait here: every Cloudflare reactor uses
 the StorageKit Durable Object adapter.
+
+## Vector index hosting capability
+
+`VectorIndexes` is not split into host-specific products or traits. The
+Cloudflare runtime instead validates the application container definition
+before `DBContainer.open`:
+
+```mermaid
+flowchart LR
+    A["VectorIndexes"] --> B["Flat"]
+    A --> C["IVF"]
+    A --> D["PQ"]
+    A --> E["HNSW"]
+    B --> F["Cloudflare runtime"]
+    C --> F
+    D --> F
+    E --> G["Typed startup rejection"]
+```
+
+Cloudflare limits each isolate to 128 MB including WebAssembly allocations.
+HNSW graph restoration, live graph ownership, and snapshot replacement cannot
+be guaranteed within the remaining shared budget. Every effective HNSW
+configuration is therefore unsupported. This applies to every configuration
+whose canonical execution options resolve to HNSW, including custom
+`IndexRuntimeConfiguration` values. An unconfigured vector index continues to
+use the framework default, Flat. Bootstrap fails before migrations and index
+initialization. The runtime does not silently substitute Flat, IVF, or PQ.
+
+This hosting restriction does not change the framework-level HNSW contract for
+native or unconstrained WASM hosts. See
+[ADR-0002](Docs/ADR-0002-cloudflare-vector-capabilities.md) for the decision and
+verification contract.
 
 ## TypeScript package
 
@@ -166,8 +198,11 @@ the runtime path.
 
 1. Durable Object construction migrates SQLite and creates the runtime inside
    `blockConcurrencyWhile`.
-2. Startup completes only after StorageKit, migrations, DBContainer, and the
-   full `DatabaseServerRuntime` are ready.
+2. Startup validates host capabilities before opening `DBContainer`, then
+   completes only after StorageKit, migrations, application readiness checks,
+   and the full `DatabaseServerRuntime` are ready. The verification application
+   executes Flat, IVF, and PQ write/index/query/cleanup checks when
+   `VectorIndexes` is selected; HNSW has a separate bootstrap-rejection check.
 3. Invocations and alarms use one FIFO queue, and Swift prevents concurrent
    runtime entry as a second invariant.
 4. Timeout, invalid completion, host scheduler failure, clock failure, or
@@ -233,11 +268,31 @@ npm test
 The full feasibility gate also launches workerd twice against one persisted
 Durable Object state directory. It verifies Durable Object RPC, the full Swift
 reactor, StorageKit SQLite, an OWL projection queried through SPARQL, and both
-document and RDF-index visibility after process restart:
+document and RDF-index visibility after process restart. When `VectorIndexes`
+is selected, startup must exercise Flat, IVF, and PQ through their actual
+write/index/query/delete paths. A separate negative fixture must prove that an
+effective HNSW configuration is rejected before container opening. The gate
+still requires both `VectorIndex.o` and `SwiftHNSW.o`, so it verifies the
+coherent feature closure without treating link presence as execution support:
 
 ```bash
 sh scripts/verify-runtime-feasibility.sh
 ```
+
+Latest verified `AllRuntimeFeatures` result with the 2026-07-23 Swift 6.4
+snapshot:
+
+| Measurement | Result |
+| --- | ---: |
+| Optimized reactor | 9,084,920 bytes |
+| Gzip-compressed reactor | 3,150,215 bytes |
+| WebAssembly address space | 67,108,864 bytes |
+| Startup | 60.512625 ms |
+| workerd Durable Object RPC | Passed |
+| SQLite persistence after restart | Passed |
+
+The same fixture executes Flat, IVF, and PQ and rejects HNSW before storage
+engine creation. Native package verification passes all 26 Cloudflare tests.
 
 The gate defaults to `AllRuntimeFeatures`. Set `DATABASE_RUNTIME_TRAITS` to a
 comma-separated trait list for an application-specific artifact:
@@ -247,9 +302,11 @@ DATABASE_RUNTIME_TRAITS=GraphIndexes \
   sh scripts/verify-runtime-feasibility.sh
 ```
 
-Build the application-specific runtime with a Swift 6.4 host toolchain and its
-matching Embedded WASI SDK. A host compiler and SDK from different snapshots
-are not binary-module compatible. The release gate also rejects
+Build the application-specific runtime with
+`swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a` and the matching
+`swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. A host
+compiler and SDK from different snapshots are not binary-module compatible.
+The release gate also rejects
 `DatabaseTypesFoundation`, `DatabaseKitFoundation`, `StorageKitFoundation`, and
 native database backends if they appear in the reactor link inputs. It requires
 each selected feature product and rejects every unselected feature product in

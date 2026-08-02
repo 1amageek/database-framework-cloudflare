@@ -131,13 +131,25 @@ process is restarted against the same persisted state and must still return
 both the inserted entity and the RDF query result. The gate also enforces
 Worker size, isolate address-space, startup limits, required selected feature
 products, exclusion of unselected feature products, and exclusion of host-only
-adapters.
+adapters. A `VectorIndexes` composition additionally runs startup
+write/index/query/delete checks for Flat, IVF, and PQ. A separate negative
+fixture must reject HNSW before container opening. The gate still requires the
+actual `VectorIndex` and `SwiftHNSW` products because the framework feature is
+cohesive, while supported execution is determined by the Cloudflare capability
+validator rather than link presence.
+
+The 2026-08-02 `AllRuntimeFeatures` gate produced a 9,084,920-byte optimized
+reactor (3,150,215 bytes gzip), a 67,108,864-byte address space, and a
+60.512625 ms startup measurement. Durable Object RPC and SQLite persistence
+after a workerd restart both passed.
+
 `SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and
 `DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
 locations. `DATABASE_RUNTIME_TRAITS` is a comma-separated list of public
 runtime feature traits. Relative build paths are resolved from the repository
 root. The release gate disables index-store generation and uses one build job
-so the fixed Swift 6.4 Embedded WASI toolchain produces the same reactor
+so the fixed `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a` Embedded WASI
+toolchain produces the same reactor
 without concurrent compiler resource failures.
 
 The application repository owns its concrete runtime application, production

@@ -5,6 +5,7 @@ import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
 import DatabaseServer
+import StorageKit
 #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
 import DatabaseTypes
 import VectorIndex
@@ -24,9 +25,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         )
     }
 
-    func makeContainer(
-        storageEngine: CloudflareDurableObjectStorageEngine
-    ) async throws -> DBContainer {
+    func makeContainerDefinition() async throws
+        -> CloudflareDatabaseContainerDefinition {
         #if arch(wasm32)
         let monotonicClock = CloudflareDatabaseMonotonicClock()
         let wallClock = CloudflareDatabaseWallClock()
@@ -41,44 +41,120 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
             )
         ]
         #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
-        entities.append(try RuntimeVerificationVectorDocument.schemaEntity)
-        entityRuntimes.append(
-            try DatabaseFrameworkRuntime.entity(
-                RuntimeVerificationVectorDocument.self
-            )
+        entities.append(contentsOf: [
+            try RuntimeVerificationIVFDocument.schemaEntity,
+            try RuntimeVerificationPQDocument.schemaEntity,
+            try RuntimeVerificationFlatDocument.schemaEntity,
+        ])
+        entityRuntimes.append(contentsOf: [
+            try DatabaseFrameworkRuntime.entity(RuntimeVerificationIVFDocument.self),
+            try DatabaseFrameworkRuntime.entity(RuntimeVerificationPQDocument.self),
+            try DatabaseFrameworkRuntime.entity(RuntimeVerificationFlatDocument.self),
+        ])
+        #endif
+
+        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+        let indexConfigurations: [any IndexRuntimeConfiguration] = [
+            VectorIndexConfiguration<RuntimeVerificationIVFDocument>(
+                field: RuntimeVerificationIVFDocument.fields.embedding,
+                algorithm: .ivf(
+                    try VectorIVFParameters(
+                        nlist: 2,
+                        nprobe: 2,
+                        kmeansIterations: 4
+                    )
+                )
+            ),
+            VectorIndexConfiguration<RuntimeVerificationPQDocument>(
+                field: RuntimeVerificationPQDocument.fields.embedding,
+                algorithm: .pq(
+                    try VectorPQParameters(m: 1, niter: 4)
+                )
+            ),
+            VectorIndexConfiguration<RuntimeVerificationFlatDocument>(
+                field: RuntimeVerificationFlatDocument.fields.embedding,
+                algorithm: .flat
+            ),
+        ]
+        #else
+        let indexConfigurations: [any IndexRuntimeConfiguration] = []
+        #endif
+
+        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+        try verifyHNSWRejection(
+            monotonicClock: monotonicClock,
+            wallClock: wallClock
         )
         #endif
 
-        let container = try await DBContainer.open(
-            for: try Schema(
+        return CloudflareDatabaseContainerDefinition(
+            schema: try Schema(
                 entities: entities
-            ),
-            configuration: DBConfiguration(
-                storageEngine: storageEngine,
-                monotonicClock: monotonicClock,
-                wallClock: wallClock,
-                logging: .disabled
             ),
             runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
                 entityRuntimes: entityRuntimes
             ),
-            security: .disabled
+            security: .disabled,
+            monotonicClock: monotonicClock,
+            wallClock: wallClock,
+            indexConfigurations: indexConfigurations,
+            logging: .disabled
         )
-        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
-        try await verifyVectorExecution(in: container)
-        #endif
-        return container
     }
 
     #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
     private func verifyVectorExecution(in container: DBContainer) async throws {
-        let expected = RuntimeVerificationVectorDocument(
-            id: "embedded-vector-exact",
+        try await verifyIVF(in: container)
+        try await verifyPQ(in: container)
+        try await verifyFlat(in: container)
+    }
+
+    private func verifyHNSWRejection(
+        monotonicClock: any StorageMonotonicClock,
+        wallClock: any WallClock
+    ) throws {
+        let definition = CloudflareDatabaseContainerDefinition(
+            schema: try Schema(
+                entities: [try RuntimeVerificationVectorDocument.schemaEntity]
+            ),
+            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
+                entityRuntimes: [
+                    try DatabaseFrameworkRuntime.entity(
+                        RuntimeVerificationVectorDocument.self
+                    )
+                ]
+            ),
+            security: .disabled,
+            monotonicClock: monotonicClock,
+            wallClock: wallClock,
+            indexConfigurations: [
+                VectorIndexConfiguration<RuntimeVerificationVectorDocument>(
+                    field: RuntimeVerificationVectorDocument.fields.embedding,
+                    algorithm: .hnsw(.default)
+                )
+            ]
+        )
+        do {
+            try definition.validateHostingCapabilities()
+        } catch let error as CloudflareDatabaseConfigurationError {
+            guard error == .unsupportedHNSW(
+                indexName: "RuntimeVerificationVectorDocument_embedding"
+            ) else {
+                throw RuntimeVerificationError.hnswCapabilityErrorMismatch
+            }
+            return
+        }
+        throw RuntimeVerificationError.hnswCapabilityWasAccepted
+    }
+
+    private func verifyIVF(in container: DBContainer) async throws {
+        let expected = RuntimeVerificationIVFDocument(
+            id: "embedded-vector-ivf-exact",
             title: "Exact",
             embedding: try Vector(float32: [2, 0])
         )
-        let alternate = RuntimeVerificationVectorDocument(
-            id: "embedded-vector-alternate",
+        let alternate = RuntimeVerificationIVFDocument(
+            id: "embedded-vector-ivf-alternate",
             title: "Alternate",
             embedding: try Vector(float32: [0, 2])
         )
@@ -86,11 +162,14 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         try context.upsert(expected)
         try context.upsert(alternate)
         try await context.save()
-
+        try await context.indexQueryContext.trainVectorIndex(
+            named: "RuntimeVerificationIVFDocument_embedding",
+            for: RuntimeVerificationIVFDocument.self
+        )
         let results = try await context
-            .findSimilar(RuntimeVerificationVectorDocument.self)
+            .findSimilar(RuntimeVerificationIVFDocument.self)
             .vector(
-                RuntimeVerificationVectorDocument.fields.embedding,
+                RuntimeVerificationIVFDocument.fields.embedding,
                 dimensions: 2
             )
             .query([1, 0], k: 1)
@@ -101,7 +180,78 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
               results[0].distance.isFinite else {
             throw RuntimeVerificationError.vectorExecutionMismatch
         }
+        try context.delete(expected)
+        try context.delete(alternate)
+        try await context.save()
+    }
 
+    private func verifyPQ(in container: DBContainer) async throws {
+        let expected = RuntimeVerificationPQDocument(
+            id: "embedded-vector-pq-exact",
+            title: "Exact",
+            embedding: try Vector(float32: [2, 0])
+        )
+        let alternate = RuntimeVerificationPQDocument(
+            id: "embedded-vector-pq-alternate",
+            title: "Alternate",
+            embedding: try Vector(float32: [0, 2])
+        )
+        let context = container.newContext()
+        try context.upsert(expected)
+        try context.upsert(alternate)
+        try await context.save()
+        try await context.indexQueryContext.trainVectorIndex(
+            named: "RuntimeVerificationPQDocument_embedding",
+            for: RuntimeVerificationPQDocument.self
+        )
+        let results = try await context
+            .findSimilar(RuntimeVerificationPQDocument.self)
+            .vector(
+                RuntimeVerificationPQDocument.fields.embedding,
+                dimensions: 2
+            )
+            .query([1, 0], k: 1)
+            .metric(.dotProduct)
+            .execute()
+        guard results.count == 1,
+              results[0].item.id == expected.id,
+              results[0].distance.isFinite else {
+            throw RuntimeVerificationError.vectorExecutionMismatch
+        }
+        try context.delete(expected)
+        try context.delete(alternate)
+        try await context.save()
+    }
+
+    private func verifyFlat(in container: DBContainer) async throws {
+        let expected = RuntimeVerificationFlatDocument(
+            id: "embedded-vector-flat-exact",
+            title: "Exact",
+            embedding: try Vector(float32: [2, 0])
+        )
+        let alternate = RuntimeVerificationFlatDocument(
+            id: "embedded-vector-flat-alternate",
+            title: "Alternate",
+            embedding: try Vector(float32: [0, 2])
+        )
+        let context = container.newContext()
+        try context.upsert(expected)
+        try context.upsert(alternate)
+        try await context.save()
+        let results = try await context
+            .findSimilar(RuntimeVerificationFlatDocument.self)
+            .vector(
+                RuntimeVerificationFlatDocument.fields.embedding,
+                dimensions: 2
+            )
+            .query([1, 0], k: 1)
+            .metric(.dotProduct)
+            .execute()
+        guard results.count == 1,
+              results[0].item.id == expected.id,
+              results[0].distance.isFinite else {
+            throw RuntimeVerificationError.vectorExecutionMismatch
+        }
         try context.delete(expected)
         try context.delete(alternate)
         try await context.save()
@@ -112,7 +262,9 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         container: DBContainer,
         jobScheduler: AnyDatabaseJobScheduler
     ) async throws -> DatabaseServerRuntimeConfiguration {
-        _ = container
+        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
+        try await verifyVectorExecution(in: container)
+        #endif
         #if arch(wasm32)
         let clock = CloudflareDatabaseWallClock()
         let identifierGenerator = CloudflareDatabaseUUIDGenerator()

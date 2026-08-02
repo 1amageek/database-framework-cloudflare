@@ -23,6 +23,14 @@ application. SwiftPM traits define the application feature closure at compile
 time. `GraphIndexes` also selects `ScalarIndexes`, which graph storage requires.
 The fixed ABI and TypeScript host are independent of that feature closure.
 
+`VectorIndexes` remains one feature closure containing Flat, HNSW, IVF, and
+PQ. Cloudflare hosting narrows execution capability without introducing an
+HNSW-specific trait: Flat, IVF, and PQ are supported, while every effective
+HNSW configuration is rejected before `DBContainer.open`. The runtime never
+falls back to another vector algorithm. The detailed rationale and validation
+contract are recorded in
+[ADR-0002](ADR-0002-cloudflare-vector-capabilities.md).
+
 ## Exports
 
 | Export | Signature | Responsibility |
@@ -148,7 +156,12 @@ owner, the synchronous StorageKit host ABI, and Durable Object SQLite. It then
 executes a DatabaseWire mutation for an OWL-class entity and verifies the
 generated RDF projection through a SPARQL ASK request. After restarting workerd
 with the same persisted state, both the document query and SPARQL ASK request
-must observe the prior mutation.
+must observe the prior mutation. When `VectorIndexes` is selected, startup
+exercises Flat, IVF, and PQ through their actual write, maintenance, query, and
+delete paths. A separate negative fixture proves that HNSW fails at bootstrap
+before container opening. The gate requires `VectorIndex.o` and `SwiftHNSW.o`
+in that composition because the framework feature remains cohesive, but it
+does not mistake link presence for supported Cloudflare execution.
 
 ## Consequences
 

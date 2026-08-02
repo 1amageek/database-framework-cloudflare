@@ -7,19 +7,59 @@ import Testing
 
 @Suite("Cloudflare database runtime", .serialized)
 struct CloudflareDatabaseRuntimeTests {
-    @Test("selected runtime traits satisfy the verification schema")
-    func composesSelectedRuntimeFeatures() async throws {
-        let application = try RuntimeVerificationApplication()
-        let storageEngine = try await CloudflareDurableObjectStorageEngine(
-            configuration: CloudflareDurableObjectStorageConfiguration(
-                scope: application.storageScope,
-                client: InMemoryCloudflareDurableObjectStorageClient(),
-                limits: application.storageLimits,
-                monotonicClock: CloudflareDatabaseMonotonicClock()
+    #if CLOUDFLARE_TEST_VECTOR_INDEXES
+    @Test("HNSW fails at bootstrap before storage access")
+    func rejectsHNSWBeforeStorageAccess() async throws {
+        let application = try CloudflareHNSWRejectionApplication()
+        let definition = try await application.makeContainerDefinition()
+        #expect(throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
+            indexName: "CloudflareHNSWRejectionDocument_embedding"
+        )) {
+            try definition.validateHostingCapabilities()
+        }
+
+        let storageClient = UnexpectedStorageAccessClient()
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = CloudflareDatabaseRuntime(
+            application: application,
+            storageClient: storageClient,
+            jobScheduler: DiscardingDatabaseJobScheduler(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: completion
             )
         )
 
-        _ = try await application.makeContainer(storageEngine: storageEngine)
+        await runtime.start(callID: 90)
+
+        let result = try #require(completion.completion(callID: 90))
+        #expect(result.status == .startupFailed)
+        #expect(
+            string(from: result.payload)
+                == "Cloudflare hosting does not support HNSW for vector index 'CloudflareHNSWRejectionDocument_embedding'"
+        )
+        #expect(await storageClient.recordedAccessCount() == 0)
+    }
+
+    @Test("custom canonical HNSW configuration cannot bypass admission")
+    func rejectsCustomHNSWConfiguration() async throws {
+        let application = try CloudflareHNSWRejectionApplication(
+            indexConfiguration: CustomHNSWRuntimeConfiguration()
+        )
+        let definition = try await application.makeContainerDefinition()
+
+        #expect(throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
+            indexName: "CloudflareHNSWRejectionDocument_embedding"
+        )) {
+            try definition.validateHostingCapabilities()
+        }
+    }
+    #endif
+
+    @Test("selected runtime traits satisfy the verification schema")
+    func composesSelectedRuntimeFeatures() async throws {
+        let application = try RuntimeVerificationApplication()
+        let definition = try await application.makeContainerDefinition()
+        try definition.validateHostingCapabilities()
     }
 
     @Test("startup exposes the canonical capabilities operation")

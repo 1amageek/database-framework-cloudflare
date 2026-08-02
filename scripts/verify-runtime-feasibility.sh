@@ -5,6 +5,9 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 swift_executable=${SWIFT_EXECUTABLE:-}
 swift_wasm_sdk=${SWIFT_EMBEDDED_WASM_SDK:-}
+required_snapshot=swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a
+required_swift_commit=ef761e567dc94ee
+required_wasm_sdk=${required_snapshot}_wasm-embedded
 runtime_traits=${DATABASE_RUNTIME_TRAITS:-AllRuntimeFeatures}
 build_path=${DATABASE_RUNTIME_BUILD_PATH:-"$repository_root/.build/release-gate"}
 case "$build_path" in
@@ -60,13 +63,10 @@ runtime_trait_is_enabled() {
 }
 
 if [ -z "$swift_wasm_sdk" ]; then
-    swift_wasm_sdk=$(
-        "${swift_executable:-swift}" sdk list |
-            awk '/^swift-6\.4.*_wasm-embedded$/ { selected = $0 } END { print selected }'
-    )
+    swift_wasm_sdk=$required_wasm_sdk
 fi
-if [ -z "$swift_wasm_sdk" ]; then
-    echo "A Swift 6.4 Embedded WASI SDK is required" >&2
+if [ "$swift_wasm_sdk" != "$required_wasm_sdk" ]; then
+    echo "The release gate requires Embedded WASI SDK $required_wasm_sdk" >&2
     exit 1
 fi
 if [ -z "$swift_executable" ]; then
@@ -84,6 +84,13 @@ if ! "$swift_executable" -print-target-info | grep -q \
     echo "Swift toolchain and Embedded WASM SDK snapshots do not match" >&2
     "$swift_executable" --version >&2
     echo "sdk=$swift_wasm_sdk" >&2
+    exit 1
+fi
+swift_version=$($swift_executable --version)
+if ! printf '%s\n' "$swift_version" | grep -q \
+    "Swift $required_swift_commit"; then
+    echo "The release gate requires Swift compiler commit $required_swift_commit" >&2
+    printf '%s\n' "$swift_version" >&2
     exit 1
 fi
 if ! command -v wasm-opt >/dev/null 2>&1; then
@@ -143,7 +150,7 @@ if runtime_trait_is_enabled ScalarIndexes; then
     required_feature_products="$required_feature_products ScalarIndex.o"
 fi
 if runtime_trait_is_enabled VectorIndexes; then
-    required_feature_products="$required_feature_products VectorIndex.o SwiftHNSW.o"
+    required_feature_products="$required_feature_products VectorIndex.o SwiftHNSW.o CTurboQuantKernels.o"
 fi
 if runtime_trait_is_enabled FullTextIndexes; then
     required_feature_products="$required_feature_products FullTextIndex.o"
@@ -187,6 +194,7 @@ for optional_product in \
     ScalarIndex.o \
     VectorIndex.o \
     SwiftHNSW.o \
+    CTurboQuantKernels.o \
     FullTextIndex.o \
     SpatialIndex.o \
     RankIndex.o \

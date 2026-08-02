@@ -11,10 +11,12 @@ public protocol CloudflareDatabaseApplication: AnyObject, Sendable {
     /// Storage limits enforced by both the engine and its platform adapter.
     var storageLimits: CloudflareDurableObjectLimits { get }
 
-    /// Creates and migrates the application-specific container.
-    func makeContainer(
-        storageEngine: CloudflareDurableObjectStorageEngine
-    ) async throws -> DBContainer
+    /// Describes the application container before storage or indexes open.
+    ///
+    /// The runtime validates host capabilities from this value, constructs the
+    /// Cloudflare storage engine, and then opens the container.
+    func makeContainerDefinition() async throws
+        -> CloudflareDatabaseContainerDefinition
 
     /// Provides every service required by the canonical DatabaseWire runtime.
     ///

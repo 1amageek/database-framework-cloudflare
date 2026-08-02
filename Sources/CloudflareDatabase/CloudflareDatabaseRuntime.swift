@@ -66,6 +66,8 @@ public actor CloudflareDatabaseRuntime {
             if let existingContainer = self.container {
                 container = existingContainer
             } else {
+                let definition = try await application.makeContainerDefinition()
+                try definition.validateHostingCapabilities()
                 let storageEngine = try await CloudflareDurableObjectStorageEngine(
                     configuration: CloudflareDurableObjectStorageConfiguration(
                         scope: application.storageScope,
@@ -74,7 +76,7 @@ public actor CloudflareDatabaseRuntime {
                         monotonicClock: CloudflareDatabaseMonotonicClock()
                     )
                 )
-                let createdContainer = try await application.makeContainer(
+                let createdContainer = try await definition.open(
                     storageEngine: storageEngine
                 )
                 self.container = createdContainer
@@ -94,6 +96,14 @@ public actor CloudflareDatabaseRuntime {
         } catch is CancellationError {
             isStarting = false
             fail(callID: callID, status: .cancelled, message: "Database runtime startup was cancelled")
+        } catch let error as CloudflareDatabaseConfigurationError {
+            isStarting = false
+            serverRuntime = nil
+            fail(
+                callID: callID,
+                status: .startupFailed,
+                message: error.description
+            )
         } catch {
             isStarting = false
             serverRuntime = nil

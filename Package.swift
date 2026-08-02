@@ -111,7 +111,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0731.3",
+            from: "26.0802.0",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
@@ -120,7 +120,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0731.0"
+            from: "26.0802.0"
         ),
     ],
     targets: [
@@ -130,6 +130,11 @@ let package = Package(
                 "CloudflareDatabaseTaskScheduling",
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
+                .product(
+                    name: "VectorIndex",
+                    package: "database-framework",
+                    condition: .when(traits: ["VectorIndexes"])
+                ),
                 .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "StorageKit", package: "storage-kit"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
@@ -138,6 +143,10 @@ let package = Package(
             ],
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
+                .define(
+                    "CLOUDFLARE_DATABASE_VECTOR_INDEXES",
+                    .when(traits: ["VectorIndexes"])
+                ),
             ]
         ),
         .target(
@@ -164,6 +173,7 @@ let package = Package(
                 .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
                 .product(name: "CloudflareDurableObjectStorageWire", package: "storage-kit"),
+                .product(name: "StorageKit", package: "storage-kit"),
                 .product(
                     name: "StorageKitSystemClock",
                     package: "storage-kit",
@@ -204,6 +214,11 @@ let package = Package(
                 .product(name: "DatabaseRuntime", package: "database-framework"),
                 .product(name: "DatabaseServer", package: "database-framework"),
                 .product(
+                    name: "VectorIndex",
+                    package: "database-framework",
+                    condition: .when(traits: ["VectorIndexes"])
+                ),
+                .product(
                     name: "DatabaseServerFoundation",
                     package: "database-framework",
                     condition: .when(platforms: hostPlatforms)
@@ -221,6 +236,12 @@ let package = Package(
                     name: "StorageKitSystemClock",
                     package: "storage-kit",
                     condition: .when(platforms: hostPlatforms)
+                ),
+            ],
+            swiftSettings: [
+                .define(
+                    "CLOUDFLARE_TEST_VECTOR_INDEXES",
+                    .when(traits: ["VectorIndexes"])
                 ),
             ]
         ),

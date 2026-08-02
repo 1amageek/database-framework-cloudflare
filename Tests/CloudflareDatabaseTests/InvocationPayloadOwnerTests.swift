@@ -5,6 +5,24 @@ import Testing
 
 @Suite("Invocation payload ownership")
 struct InvocationPayloadOwnerTests {
+    @Test("aggregate payload admission rejects integer overflow")
+    func rejectsAggregateByteCountOverflow() {
+        #expect(
+            DatabaseInvocationPayloadOwnership.admittedOwnedPayloadByteCount(
+                currentByteCount: Int.max,
+                requestedByteCount: 1,
+                maximumByteCount: Int.max
+            ) == nil
+        )
+        #expect(
+            DatabaseInvocationPayloadOwnership.admittedOwnedPayloadByteCount(
+                currentByteCount: 4,
+                requestedByteCount: 6,
+                maximumByteCount: 10
+            ) == 10
+        )
+    }
+
     @Test("ByteString borrows the runtime allocation and releases it once")
     func borrowsAndReleasesRuntimeAllocation() {
         let releasedPayloads = Mutex<[(address: UInt, count: Int)]>([])
