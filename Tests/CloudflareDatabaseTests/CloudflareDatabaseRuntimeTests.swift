@@ -53,6 +53,21 @@ struct CloudflareDatabaseRuntimeTests {
             try definition.validateHostingCapabilities()
         }
     }
+
+    @Test("invalid vector configuration remains a typed bootstrap failure")
+    func rejectsInvalidVectorConfiguration() async throws {
+        let application = try CloudflareHNSWRejectionApplication(
+            indexConfiguration: InvalidVectorRuntimeConfiguration()
+        )
+        let definition = try await application.makeContainerDefinition()
+
+        #expect(
+            throws: CloudflareDatabaseConfigurationError
+                .invalidVectorConfiguration
+        ) {
+            try definition.validateHostingCapabilities()
+        }
+    }
     #endif
 
     @Test("selected runtime traits satisfy the verification schema")

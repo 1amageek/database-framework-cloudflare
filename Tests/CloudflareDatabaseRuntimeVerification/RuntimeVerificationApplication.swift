@@ -136,7 +136,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         )
         do {
             try definition.validateHostingCapabilities()
-        } catch let error as CloudflareDatabaseConfigurationError {
+        } catch let error {
             guard error == .unsupportedHNSW(
                 indexName: "RuntimeVerificationVectorDocument_embedding"
             ) else {

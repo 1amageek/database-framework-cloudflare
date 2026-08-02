@@ -43,7 +43,8 @@ public struct CloudflareDatabaseContainerDefinition: Sendable {
 
     /// Validates hosting restrictions without opening storage or allocating an
     /// index implementation.
-    public func validateHostingCapabilities() throws {
+    public func validateHostingCapabilities()
+        throws(CloudflareDatabaseConfigurationError) {
         try CloudflareDatabaseHostingCapabilityValidator.validate(self)
     }
 
