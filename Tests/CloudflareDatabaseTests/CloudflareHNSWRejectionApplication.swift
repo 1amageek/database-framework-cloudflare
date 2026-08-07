@@ -12,7 +12,7 @@ import VectorIndex
 
 final class CloudflareHNSWRejectionApplication:
     CloudflareDatabaseApplication {
-    let storageScope: StorageWireScope
+    let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
 
     private let indexConfiguration: any IndexRuntimeConfiguration
@@ -20,7 +20,7 @@ final class CloudflareHNSWRejectionApplication:
     init(
         indexConfiguration: (any IndexRuntimeConfiguration)? = nil
     ) throws {
-        storageScope = try StorageWireScope(
+        partitionIdentity = try StoragePartitionIdentity(
             databaseID: "cloudflare-hnsw-rejection"
         )
         self.indexConfiguration = indexConfiguration

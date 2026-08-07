@@ -81,7 +81,7 @@ public actor CloudflareDatabaseRuntime {
                 }
                 let storageEngine = try await CloudflareDurableObjectStorageEngine(
                     configuration: CloudflareDurableObjectStorageConfiguration(
-                        scope: application.storageScope,
+                        partitionIdentity: application.partitionIdentity,
                         client: storageClient,
                         limits: application.storageLimits,
                         monotonicClock: CloudflareDatabaseMonotonicClock()

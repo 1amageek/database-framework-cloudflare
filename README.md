@@ -41,7 +41,7 @@ The package exports one library product, `CloudflareDatabase`.
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseApplication` | Supplies the application storage scope, unopened container definition, migrations, and server configuration |
+| `CloudflareDatabaseApplication` | Supplies the application storage partition identity, unopened container definition, migrations, and server configuration |
 | `CloudflareDatabaseApplicationComposition` | Preserves the application-specific factories behind a stable runtime owner |
 | `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through the full server runtime |
 | `CloudflareDatabaseRuntimeCommandChannel` | Submits synchronous boundary commands to the actor-owned runtime |
@@ -150,8 +150,8 @@ export class CalendarDatabaseDurableObject
 ```
 
 Application Workers call `execute(Uint8Array)` through a Durable Object binding.
-Public administration endpoints, authentication, and scope selection belong to
-the application Worker, not this package.
+Public administration endpoints, authentication, and storage-partition routing
+belong to the application Worker, not this package.
 
 ## Runtime flow
 
@@ -284,15 +284,15 @@ snapshot:
 
 | Measurement | Result |
 | --- | ---: |
-| Optimized reactor | 9,084,920 bytes |
-| Gzip-compressed reactor | 3,150,215 bytes |
+| Optimized reactor | 9,145,363 bytes |
+| Gzip-compressed reactor | 3,164,818 bytes |
 | WebAssembly address space | 67,108,864 bytes |
-| Startup | 60.512625 ms |
+| Startup | 98.061 ms |
 | workerd Durable Object RPC | Passed |
 | SQLite persistence after restart | Passed |
 
 The same fixture executes Flat, IVF, and PQ and rejects HNSW before storage
-engine creation. Native package verification passes all 26 Cloudflare tests.
+engine creation. Native package verification passes all 27 Cloudflare tests.
 
 The gate defaults to `AllRuntimeFeatures`. Set `DATABASE_RUNTIME_TRAITS` to a
 comma-separated trait list for an application-specific artifact:
@@ -310,7 +310,10 @@ The release gate also rejects
 `DatabaseTypesFoundation`, `DatabaseKitFoundation`, `StorageKitFoundation`, and
 native database backends if they appear in the reactor link inputs. It requires
 each selected feature product and rejects every unselected feature product in
-the same link manifest before executing ABI, size, and workerd checks.
+the same link manifest before executing ABI, size, and workerd checks. Reactor
+debug metadata is disabled because it is not shipped and because the pinned
+cross-toolchain cannot validate host-built dependency DWARF; compiler
+diagnostics and all runtime checks remain enabled.
 
 ## Repository layout
 

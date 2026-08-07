@@ -7,7 +7,7 @@ import DatabaseServer
 public final class CloudflareDatabaseApplicationComposition:
     CloudflareDatabaseApplication,
     Sendable {
-    public let storageScope: StorageWireScope
+    public let partitionIdentity: StoragePartitionIdentity
     public let storageLimits: CloudflareDurableObjectLimits
 
     private let createContainerDefinition: @Sendable () async throws
@@ -20,7 +20,7 @@ public final class CloudflareDatabaseApplicationComposition:
     public init<Application: CloudflareDatabaseApplication>(
         _ application: Application
     ) {
-        self.storageScope = application.storageScope
+        self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
         self.createContainerDefinition = {
             try await application.makeContainerDefinition()

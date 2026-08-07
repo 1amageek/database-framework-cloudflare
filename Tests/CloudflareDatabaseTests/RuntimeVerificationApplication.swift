@@ -9,12 +9,12 @@ import DatabaseServerFoundation
 import StorageKitSystemClock
 
 final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
-    let storageScope: StorageWireScope
+    let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let jobService: AnyDatabaseJobService
 
     init() throws {
-        storageScope = try StorageWireScope(
+        partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
         self.jobService = AnyDatabaseJobService(
@@ -23,7 +23,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     }
 
     init<JobService: DatabaseJobService>(jobService: JobService) throws {
-        storageScope = try StorageWireScope(
+        partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
         self.jobService = AnyDatabaseJobService(jobService)

@@ -16,11 +16,11 @@ import StorageKitSystemClock
 #endif
 
 final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
-    let storageScope: StorageWireScope
+    let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
 
     init() throws {
-        storageScope = try StorageWireScope(
+        partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
     }

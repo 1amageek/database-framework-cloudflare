@@ -138,9 +138,9 @@ actual `VectorIndex` and `SwiftHNSW` products because the framework feature is
 cohesive, while supported execution is determined by the Cloudflare capability
 validator rather than link presence.
 
-The 2026-08-02 `AllRuntimeFeatures` gate produced a 9,084,920-byte optimized
-reactor (3,150,215 bytes gzip), a 67,108,864-byte address space, and a
-60.512625 ms startup measurement. Durable Object RPC and SQLite persistence
+The 2026-08-07 `AllRuntimeFeatures` gate produced a 9,145,363-byte optimized
+reactor (3,164,818 bytes gzip), a 67,108,864-byte address space, and a
+98.061 ms startup measurement. Durable Object RPC and SQLite persistence
 after a workerd restart both passed.
 
 `SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and
@@ -149,8 +149,10 @@ locations. `DATABASE_RUNTIME_TRAITS` is a comma-separated list of public
 runtime feature traits. Relative build paths are resolved from the repository
 root. The release gate disables index-store generation and uses one build job
 so the fixed `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a` Embedded WASI
-toolchain produces the same reactor
-without concurrent compiler resource failures.
+toolchain produces the same reactor without concurrent compiler resource
+failures. Reactor debug metadata is also disabled because it is not shipped and
+the pinned cross-toolchain cannot validate host-built dependency DWARF;
+compiler diagnostics and all runtime checks remain enabled.
 
 The application repository owns its concrete runtime application, production
 Durable Object subclass, Wrangler configuration, routing, and authentication

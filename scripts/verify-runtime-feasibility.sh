@@ -116,6 +116,7 @@ printf '%s\n' "traits=$runtime_traits"
     --traits "$runtime_traits" \
     --build-path "$build_path" \
     --disable-index-store \
+    -debug-info-format none \
     -j 1 \
     -Xswiftc -Osize \
     -Xswiftc -whole-module-optimization

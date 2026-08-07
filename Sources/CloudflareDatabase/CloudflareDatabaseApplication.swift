@@ -5,8 +5,8 @@ import DatabaseServer
 
 /// Application-owned composition root for one compiled database runtime.
 public protocol CloudflareDatabaseApplication: AnyObject, Sendable {
-    /// Stable StorageKit scope hosted by the Durable Object instance.
-    var storageScope: StorageWireScope { get }
+    /// Stable storage partition hosted by the Durable Object instance.
+    var partitionIdentity: StoragePartitionIdentity { get }
 
     /// Storage limits enforced by both the engine and its platform adapter.
     var storageLimits: CloudflareDurableObjectLimits { get }
