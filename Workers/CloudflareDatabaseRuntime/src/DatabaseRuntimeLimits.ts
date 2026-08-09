@@ -7,7 +7,6 @@ export const databaseMaximumQueuedRequestBytes = 64 * 1024 * 1024;
 export const databaseMaximumPendingRequests = 1024;
 export const databaseMaximumInvocationTimeoutMilliseconds = 30_000;
 export const databaseMaximumAlarmRecoveryDelayMilliseconds = 24 * 60 * 60 * 1_000;
-export const databaseMaximumRowsWrittenPerUTCDate = Number.MAX_SAFE_INTEGER;
 export const databaseMaximumRequestStreamChunks = 65_536;
 export const defaultDatabaseMaxRequestBytes = 4 * 1024 * 1024;
 export const defaultDatabaseMaxResponseBytes = 4 * 1024 * 1024;
@@ -24,7 +23,6 @@ export type DatabaseRuntimeLimitEnvironment = {
   DATABASE_MAX_PENDING_REQUESTS?: string | number | null;
   DATABASE_INVOCATION_TIMEOUT_MILLISECONDS?: string | number | null;
   DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS?: string | number | null;
-  DATABASE_MAX_ROWS_WRITTEN_PER_UTC_DAY?: string | number | null;
 };
 
 export class DatabasePayloadTooLargeError extends Error {
@@ -121,21 +119,6 @@ export function databaseAlarmRecoveryDelayMilliseconds(
     );
   }
   return delay;
-}
-
-export function databaseMaxRowsWrittenPerUTCDate(
-  env: DatabaseRuntimeLimitEnvironment | null | undefined
-): number | null {
-  const configured = env?.DATABASE_MAX_ROWS_WRITTEN_PER_UTC_DAY;
-  if (configured === undefined || configured === null || configured === "") {
-    return null;
-  }
-  return configuredIntegerLimit(
-    configured,
-    "DATABASE_MAX_ROWS_WRITTEN_PER_UTC_DAY",
-    databaseMaximumRowsWrittenPerUTCDate,
-    databaseMaximumRowsWrittenPerUTCDate
-  );
 }
 
 export function rejectOversizedContentLength(

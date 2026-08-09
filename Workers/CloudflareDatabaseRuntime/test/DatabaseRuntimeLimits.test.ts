@@ -5,7 +5,6 @@ import {
   databaseMaxPendingRequests,
   databaseMaxQueuedRequestBytes,
   databaseMaxRequestBytes,
-  databaseMaxRowsWrittenPerUTCDate,
   databaseInvocationTimeoutMilliseconds,
   DatabaseRuntimeLimitConfigurationError,
   DatabaseInvalidContentLengthError,
@@ -219,22 +218,6 @@ test("invalid configured limits fail fast", () => {
       DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS: 30_000,
     }, 30_000),
     DatabaseRuntimeLimitConfigurationError
-  );
-  assert.throws(
-    () => databaseMaxRowsWrittenPerUTCDate({
-      DATABASE_MAX_ROWS_WRITTEN_PER_UTC_DAY: 0,
-    }),
-    DatabaseRuntimeLimitConfigurationError
-  );
-});
-
-test("daily SQLite write budget is optional and uses the configured value", () => {
-  assert.equal(databaseMaxRowsWrittenPerUTCDate(undefined), null);
-  assert.equal(
-    databaseMaxRowsWrittenPerUTCDate({
-      DATABASE_MAX_ROWS_WRITTEN_PER_UTC_DAY: "50000",
-    }),
-    50_000
   );
 });
 

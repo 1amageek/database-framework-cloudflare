@@ -7,7 +7,6 @@ import {
   databaseMaxRequestBytes,
   databaseMaxResponseBytes,
   databaseInvocationTimeoutMilliseconds,
-  databaseMaxRowsWrittenPerUTCDate,
   type DatabaseRuntimeLimitEnvironment,
 } from "./DatabaseRuntimeLimits";
 import { DatabaseRuntimeEntryQueue } from "./DatabaseRuntimeEntryQueue";
@@ -44,15 +43,10 @@ export abstract class CloudflareDatabaseDurableObject<
     instantiateRuntime: DatabaseRuntimeInstantiator = instantiateDatabaseRuntime
   ) {
     super(ctx, env);
-    const maximumRowsWrittenPerUTCDate =
-      databaseMaxRowsWrittenPerUTCDate(env);
     this.storageAdapter = new StorageKitDurableObjectHost(
       this.ctx.storage.sql,
       <Result>(operation: () => Result) =>
-        this.ctx.storage.transactionSync(operation),
-      maximumRowsWrittenPerUTCDate === null
-        ? {}
-        : { maximumRowsWrittenPerUTCDate }
+        this.ctx.storage.transactionSync(operation)
     );
     this.runtimeProgram = runtimeProgram;
     this.instantiateRuntime = instantiateRuntime;

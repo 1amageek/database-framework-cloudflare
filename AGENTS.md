@@ -32,7 +32,7 @@
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
   `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 27 passed
   tests with zero failures, skips, expected failures, or runtime warnings.
-- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 118
+- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 117
   passed TypeScript tests with zero failures, cancellations, skips, or todos.
 - Run `scripts/verify-runtime-feasibility.sh` with the fixed
   `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. The gate
