@@ -26,7 +26,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     }
 
     func makeContainerDefinition() async throws
-        -> CloudflareDatabaseContainerDefinition {
+        -> DatabaseContainerDefinition {
         #if arch(wasm32)
         let monotonicClock = CloudflareDatabaseMonotonicClock()
         let wallClock = CloudflareDatabaseWallClock()
@@ -87,7 +87,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         )
         #endif
 
-        return CloudflareDatabaseContainerDefinition(
+        return DatabaseContainerDefinition(
             schema: try Schema(
                 entities: entities
             ),
@@ -113,7 +113,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         monotonicClock: any StorageMonotonicClock,
         wallClock: any WallClock
     ) throws {
-        let definition = CloudflareDatabaseContainerDefinition(
+        let definition = DatabaseContainerDefinition(
             schema: try Schema(
                 entities: [try RuntimeVerificationVectorDocument.schemaEntity]
             ),
@@ -135,7 +135,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
             ]
         )
         do {
-            try definition.validateHostingCapabilities()
+            try definition.validateCloudflareHostingCapabilities()
         } catch let error {
             guard error == .unsupportedHNSW(
                 indexName: "RuntimeVerificationVectorDocument_embedding"
@@ -258,9 +258,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     }
     #endif
 
-    func makeServerConfiguration(
-        container: DBContainer,
-        jobScheduler: AnyDatabaseJobScheduler
+    func makeRuntimeConfiguration(
+        for container: DBContainer
     ) async throws -> DatabaseServerRuntimeConfiguration {
         #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
         try await verifyVectorExecution(in: container)
@@ -274,7 +273,6 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         #endif
         let jobServiceFactory = try DatabasePersistentJobServiceFactory(
             registry: DatabaseResumableOperationRegistry(operations: []),
-            scheduler: jobScheduler,
             identifierGenerator: identifierGenerator,
             storageLimits: DatabasePersistentJobStorageLimits(
                 maximumStorageValueBytes: 1_048_576

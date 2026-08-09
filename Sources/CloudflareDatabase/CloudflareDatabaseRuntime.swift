@@ -1,5 +1,7 @@
 import CloudflareDurableObjectStorage
+import CloudflareDurableObjectStorageWire
 import DatabaseEngine
+import DatabaseKit
 import DatabaseServer
 import DatabaseTypes
 
@@ -15,7 +17,9 @@ public actor CloudflareDatabaseRuntime {
         case alarm(callID: UInt32)
     }
 
-    private let application: CloudflareDatabaseApplicationComposition
+    private let application: AnyDatabaseServerApplication
+    private let partitionIdentity: StoragePartitionIdentity
+    private let storageLimits: CloudflareDurableObjectLimits
     private let storageClient: CloudflareDurableObjectStorageClientComposition
     private let jobScheduler: AnyDatabaseJobScheduler
     private let completion: CloudflareDatabaseCompletionChannel
@@ -38,8 +42,33 @@ public actor CloudflareDatabaseRuntime {
         completion: CloudflareDatabaseCompletionChannel,
         limits: CloudflareDatabaseRuntimeLimits = .default
     ) {
-        self.application = CloudflareDatabaseApplicationComposition(application)
+        self.application = AnyDatabaseServerApplication(application)
+        self.partitionIdentity = application.partitionIdentity
+        self.storageLimits = application.storageLimits
         self.storageClient = CloudflareDurableObjectStorageClientComposition(storageClient)
+        self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
+        self.completion = completion
+        self.limits = limits
+    }
+
+    init<
+        StorageClient: CloudflareDurableObjectStorageClient,
+        JobScheduler: DatabaseJobScheduler
+    >(
+        application: AnyDatabaseServerApplication,
+        partitionIdentity: StoragePartitionIdentity,
+        storageLimits: CloudflareDurableObjectLimits,
+        storageClient: StorageClient,
+        jobScheduler: JobScheduler,
+        completion: CloudflareDatabaseCompletionChannel,
+        limits: CloudflareDatabaseRuntimeLimits = .default
+    ) {
+        self.application = application
+        self.partitionIdentity = partitionIdentity
+        self.storageLimits = storageLimits
+        self.storageClient = CloudflareDurableObjectStorageClientComposition(
+            storageClient
+        )
         self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
         self.completion = completion
         self.limits = limits
@@ -68,7 +97,7 @@ public actor CloudflareDatabaseRuntime {
             } else {
                 let definition = try await application.makeContainerDefinition()
                 do {
-                    try definition.validateHostingCapabilities()
+                    try definition.validateCloudflareHostingCapabilities()
                 } catch let error {
                     isStarting = false
                     serverRuntime = nil
@@ -81,9 +110,9 @@ public actor CloudflareDatabaseRuntime {
                 }
                 let storageEngine = try await CloudflareDurableObjectStorageEngine(
                     configuration: CloudflareDurableObjectStorageConfiguration(
-                        partitionIdentity: application.partitionIdentity,
+                        partitionIdentity: partitionIdentity,
                         client: storageClient,
-                        limits: application.storageLimits,
+                        limits: storageLimits,
                         monotonicClock: CloudflareDatabaseMonotonicClock()
                     )
                 )
@@ -94,13 +123,15 @@ public actor CloudflareDatabaseRuntime {
                 container = createdContainer
             }
             try await container.migrateIfNeeded()
-            let configuration = try await application.makeServerConfiguration(
-                container: container,
-                jobScheduler: jobScheduler
+            let configuration = try await application.makeRuntimeConfiguration(
+                for: container
             )
             serverRuntime = try await DatabaseServerRuntime(
                 container: container,
-                configuration: configuration
+                configuration: configuration,
+                hostServices: DatabaseServerHostServices(
+                    jobScheduler: jobScheduler
+                )
             )
             isStarting = false
             completion.complete(callID: callID, status: .success, payload: [])
@@ -231,7 +262,10 @@ public actor CloudflareDatabaseRuntime {
     ) async {
         do {
             let responseBytes = try await serverRuntime.execute(
-                invocation.requestBytes
+                invocation.requestBytes,
+                context: DatabaseRequestExecutionContext(
+                    authorization: .anonymous
+                )
             )
             guard responseBytes.count <= limits.maximumResponseBytes else {
                 fail(

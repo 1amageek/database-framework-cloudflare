@@ -1,10 +1,11 @@
 #if CLOUDFLARE_DATABASE_VECTOR_INDEXES
 import VectorIndex
 #endif
+import DatabaseServer
 
 enum CloudflareDatabaseHostingCapabilityValidator {
     static func validate(
-        _ definition: CloudflareDatabaseContainerDefinition
+        _ definition: DatabaseContainerDefinition
     ) throws(CloudflareDatabaseConfigurationError) {
         #if CLOUDFLARE_DATABASE_VECTOR_INDEXES
         let policies: [String: VectorRuntimePolicy]

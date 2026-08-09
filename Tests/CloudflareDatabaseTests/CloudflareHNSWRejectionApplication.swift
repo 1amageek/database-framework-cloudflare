@@ -31,8 +31,8 @@ final class CloudflareHNSWRejectionApplication:
     }
 
     func makeContainerDefinition() async throws
-        -> CloudflareDatabaseContainerDefinition {
-        CloudflareDatabaseContainerDefinition(
+        -> DatabaseContainerDefinition {
+        DatabaseContainerDefinition(
             schema: try Schema(
                 entities: [try CloudflareHNSWRejectionDocument.schemaEntity]
             ),
@@ -50,12 +50,10 @@ final class CloudflareHNSWRejectionApplication:
         )
     }
 
-    func makeServerConfiguration(
-        container: DBContainer,
-        jobScheduler: AnyDatabaseJobScheduler
+    func makeRuntimeConfiguration(
+        for container: DBContainer
     ) async throws -> DatabaseServerRuntimeConfiguration {
         _ = container
-        _ = jobScheduler
         throw RuntimeVerificationError.unexpectedServiceOperation
     }
 }

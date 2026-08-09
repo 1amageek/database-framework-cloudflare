@@ -30,11 +30,10 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     }
 
     func makeContainerDefinition() async throws
-        -> CloudflareDatabaseContainerDefinition {
-        CloudflareDatabaseContainerDefinition(
-            schema: try Schema(
-                entities: [try RuntimeVerificationDocument.schemaEntity]
-            ),
+        -> DatabaseContainerDefinition {
+        DatabaseContainerDefinition(
+            schema: try RuntimeVerificationSchemaV1.makeSchema(),
+            migrationPlan: RuntimeVerificationMigrationPlan.self,
             runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
                 entityRuntimes: [
                     try DatabaseFrameworkRuntime.entity(
@@ -48,12 +47,10 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         )
     }
 
-    func makeServerConfiguration(
-        container: DBContainer,
-        jobScheduler: AnyDatabaseJobScheduler
+    func makeRuntimeConfiguration(
+        for container: DBContainer
     ) async throws -> DatabaseServerRuntimeConfiguration {
         _ = container
-        _ = jobScheduler
         return try DatabaseServerRuntimeConfiguration(
             identity: DatabaseRuntimeIdentity(
                 version: "cloudflare-runtime-verification"

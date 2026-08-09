@@ -15,7 +15,7 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
             indexName: "CloudflareHNSWRejectionDocument_embedding"
         )) {
-            try definition.validateHostingCapabilities()
+            try definition.validateCloudflareHostingCapabilities()
         }
 
         let storageClient = UnexpectedStorageAccessClient()
@@ -50,7 +50,7 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
             indexName: "CloudflareHNSWRejectionDocument_embedding"
         )) {
-            try definition.validateHostingCapabilities()
+            try definition.validateCloudflareHostingCapabilities()
         }
     }
 
@@ -65,7 +65,7 @@ struct CloudflareDatabaseRuntimeTests {
             throws: CloudflareDatabaseConfigurationError
                 .invalidVectorConfiguration
         ) {
-            try definition.validateHostingCapabilities()
+            try definition.validateCloudflareHostingCapabilities()
         }
     }
     #endif
@@ -74,7 +74,7 @@ struct CloudflareDatabaseRuntimeTests {
     func composesSelectedRuntimeFeatures() async throws {
         let application = try RuntimeVerificationApplication()
         let definition = try await application.makeContainerDefinition()
-        try definition.validateHostingCapabilities()
+        try definition.validateCloudflareHostingCapabilities()
     }
 
     @Test("startup exposes the canonical capabilities operation")

@@ -1,5 +1,6 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageHostTransport
+import CloudflareDurableObjectStorageWire
 import DatabaseServer
 import DatabaseTypes
 
@@ -32,6 +33,31 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         self.limits = limits
     }
 
+    init<
+        StorageClient: CloudflareDurableObjectStorageClient,
+        JobScheduler: DatabaseJobScheduler
+    >(
+        application: AnyDatabaseServerApplication,
+        partitionIdentity: StoragePartitionIdentity,
+        storageLimits: CloudflareDurableObjectLimits,
+        storageClient: StorageClient,
+        jobScheduler: JobScheduler,
+        completion: CloudflareDatabaseCompletionChannel,
+        limits: CloudflareDatabaseRuntimeLimits = .default
+    ) {
+        self.runtime = CloudflareDatabaseRuntime(
+            application: application,
+            partitionIdentity: partitionIdentity,
+            storageLimits: storageLimits,
+            storageClient: storageClient,
+            jobScheduler: jobScheduler,
+            completion: completion,
+            limits: limits
+        )
+        self.completion = completion
+        self.limits = limits
+    }
+
 #if arch(wasm32)
     public convenience init<Application: CloudflareDatabaseApplication>(
         application: Application,
@@ -46,6 +72,32 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         )
         self.init(
             application: application,
+            storageClient: CloudflareDurableObjectStorageWireClient(
+                transport: transport
+            ),
+            jobScheduler: CloudflareDatabaseAlarmScheduler(),
+            completion: completion,
+            limits: limits
+        )
+    }
+
+    convenience init(
+        application: AnyDatabaseServerApplication,
+        partitionIdentity: StoragePartitionIdentity,
+        storageLimits: CloudflareDurableObjectLimits,
+        completion: CloudflareDatabaseCompletionChannel =
+            CloudflareDatabaseCompletionChannel(),
+        limits: CloudflareDatabaseRuntimeLimits = .default,
+        storageTransportLimits: CloudflareDatabaseStorageTransportLimits = .default
+    ) throws {
+        let transport = try CloudflareDurableObjectStorageHostTransport(
+            maximumRequestBytes: storageTransportLimits.maximumRequestBytes,
+            maximumResponseBytes: storageTransportLimits.maximumResponseBytes
+        )
+        self.init(
+            application: application,
+            partitionIdentity: partitionIdentity,
+            storageLimits: storageLimits,
             storageClient: CloudflareDurableObjectStorageWireClient(
                 transport: transport
             ),

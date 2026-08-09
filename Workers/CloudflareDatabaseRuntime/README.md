@@ -57,6 +57,7 @@ the currently registered wait.
 | `DATABASE_MAX_QUEUED_REQUEST_BYTES` | `16777216` | Maximum aggregate retained request backing bytes |
 | `DATABASE_INVOCATION_TIMEOUT_MILLISECONDS` | `30000` | Terminal deadline for startup, invocation, or alarm completion |
 | `DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS` | `60000` | Safety wake retained after a failed alarm delivery; must exceed the invocation deadline |
+| `DATABASE_MAX_ROWS_WRITTEN_PER_UTC_DAY` | unset | Application allocation for Durable Object SQLite writes; the next transaction is rejected before writing when its reservation would cross the allocation |
 
 `DatabaseRuntimeConnectionLimits` applies additional independent bounds:
 
@@ -73,6 +74,13 @@ the currently registered wait.
 
 Applications may tighten these values but cannot raise them above compiled
 protocol caps.
+
+The daily SQLite write allocation is optional because Cloudflare account plans
+and account-wide workloads differ. Free-plan applications should set it below
+the platform's account limit so schema work and other Durable Objects retain a
+safety reserve. StorageKit persists measured `rowsWritten` values and resets
+its admission counter when the UTC date changes; read-only operations remain
+available after write admission closes.
 
 ## Failure semantics
 

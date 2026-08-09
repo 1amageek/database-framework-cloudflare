@@ -24,3 +24,21 @@
 - Borrow WebAssembly memory only synchronously. Copy once into the final owner whenever data must outlive that borrow; never retain an escaped pointer.
 - Every accepted call must resolve or reject exactly once with a typed error. Do not return stale or synthetic success.
 - This is version 1. Remove the mini runtime and duplicate storage implementations after replacement tests pass.
+
+## Verification
+
+- Run the Native package tests with the pinned `org.swift.64202607231a`
+  toolchain through `build-for-testing` and `test-without-building`. Inject the
+  toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
+  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 27 passed
+  tests with zero failures, skips, expected failures, or runtime warnings.
+- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 118
+  passed TypeScript tests with zero failures, cancellations, skips, or todos.
+- Run `scripts/verify-runtime-feasibility.sh` with the fixed
+  `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. The gate
+  must compile and link every selected runtime product, reject forbidden host
+  adapters, verify the reactor ABI, enforce artifact and address-space limits,
+  instantiate the reactor, and complete the workerd restart-persistence smoke
+  test.
+- Release verification uses URL dependencies only. A local package path may
+  diagnose a failure but is not release evidence.

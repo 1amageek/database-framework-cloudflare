@@ -1,10 +1,15 @@
 #if arch(wasm32)
+import CloudflareDurableObjectStorage
+import CloudflareDurableObjectStorageWire
+import DatabaseServer
 import DatabaseTypes
 import Synchronization
 
 /// Application-facing owner of one persistent database runtime instance.
 public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
-    private let application: CloudflareDatabaseApplicationComposition
+    private let application: AnyDatabaseServerApplication
+    private let partitionIdentity: StoragePartitionIdentity
+    private let storageLimits: CloudflareDurableObjectLimits
     private let completion: CloudflareDatabaseCompletionChannel
     private let limits: CloudflareDatabaseRuntimeLimits
     private let storageTransportLimits: CloudflareDatabaseStorageTransportLimits
@@ -56,7 +61,9 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             maximumStorageResponseBytes,
             field: "maximumStorageResponseBytes"
         )
-        self.application = CloudflareDatabaseApplicationComposition(application)
+        self.application = AnyDatabaseServerApplication(application)
+        self.partitionIdentity = application.partitionIdentity
+        self.storageLimits = application.storageLimits
         self.completion = completion
         self.limits = CloudflareDatabaseRuntimeLimits(
             maximumRequestBytes: maximumRequestBytes,
@@ -120,6 +127,8 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
                 }
                 let createdChannel = try CloudflareDatabaseRuntimeCommandChannel(
                     application: application,
+                    partitionIdentity: partitionIdentity,
+                    storageLimits: storageLimits,
                     completion: completion,
                     limits: limits,
                     storageTransportLimits: storageTransportLimits

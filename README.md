@@ -55,6 +55,30 @@ The application implements `CloudflareDatabaseApplication` and constructs a
 runtime artifact: application schema and command registration are compile-time
 dependencies.
 
+Applications with a versioned schema pass their migration plan in the unopened
+container definition. The Cloudflare runtime validates host capabilities,
+opens storage, attaches the plan, and runs `migrateIfNeeded()` before serving a
+DatabaseWire request:
+
+```swift
+func makeContainerDefinition() async throws
+    -> CloudflareDatabaseContainerDefinition {
+    CloudflareDatabaseContainerDefinition(
+        schema: try ApplicationSchemaV1.makeSchema(),
+        migrationPlan: ApplicationMigrationPlan.self,
+        runtimeConfiguration: try ApplicationRuntime.configuration(),
+        security: .disabled,
+        databaseName: "application-database",
+        monotonicClock: ApplicationMonotonicClock(),
+        wallClock: ApplicationWallClock()
+    )
+}
+```
+
+The initializer without `migrationPlan` remains the explicit choice for an
+unversioned schema. Storage ownership remains in the runtime in both cases;
+the application returns a definition rather than an opened `DBContainer`.
+
 ## Runtime feature traits
 
 Runtime feature selection is a compile-time application decision. This package
