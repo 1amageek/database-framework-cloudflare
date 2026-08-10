@@ -1,4 +1,15 @@
 export { CloudflareDatabaseDurableObject } from "./CloudflareDatabaseDurableObject";
+export {
+  databaseAuthorizationMaximumFrameBytes,
+  databaseAuthorizationMaximumIdentifierBytes,
+  databaseAuthorizationMaximumRoleBytes,
+  databaseAuthorizationMaximumRoleCount,
+  emptyDatabaseAuthorizationClaims,
+  encodeDatabaseAuthenticatedPrincipal,
+} from "./DatabaseAuthenticatedPrincipal";
+export type {
+  DatabaseAuthenticatedPrincipal,
+} from "./DatabaseAuthenticatedPrincipal";
 export { databaseCompletionStatus } from "./DatabaseCompletionStatus";
 export type { DatabaseAlarmScheduler } from "./DatabaseAlarmScheduler";
 export { DatabaseAlarmScheduleError } from "./DatabaseAlarmScheduleError";

@@ -17,15 +17,17 @@ flowchart LR
 ```
 
 The application selects the Durable Object name and supplies the compiled
-`DatabaseRuntimeProgram`. Public HTTP endpoints and authentication belong to
-the application Worker and forward the same DatabaseWire payload after policy
-checks.
+`DatabaseRuntimeProgram`. Public HTTP endpoints and credential authentication
+belong to the application Worker. After authentication it passes the unchanged
+DatabaseWire payload and a separate `DatabaseAuthenticatedPrincipal` to the
+Durable Object; raw credentials are never forwarded to Swift.
 
 ## Responsibilities
 
 | API | Responsibility |
 |---|---|
 | `CloudflareDatabaseDurableObject` | SQLite migration, runtime initialization, FIFO admission, RPC invocation, and alarm entry |
+| `DatabaseAuthenticatedPrincipal` | Bounded canonical identity, role, and claim frame for an already authenticated caller |
 | `DatabaseRuntimeConnection` | Runtime lifecycle, semantic endpoint validation, completion delivery, and terminal failure handling |
 | `DatabaseRuntimePayloadOwnership` | Payload ownership transitions, cumulative payload limits, and address-space limits |
 | `DatabaseTaskScheduler` | Immediate and delayed runtime task scheduling |
@@ -98,7 +100,8 @@ Persistence failures remain visible to Cloudflare's alarm retry behavior.
 | Boundary | Ownership |
 |---|---|
 | Durable Object RPC input | The request queue retains the incoming backing store and accounts for its full retained size |
-| Runtime invocation input | One runtime allocation receives the request and transfers to runtime ownership |
+| Authenticated principal | The queue owns and accounts for a separate canonical authorization frame |
+| Runtime invocation input | Two runtime allocations receive authorization and request bytes and transfer together to runtime ownership |
 | Runtime completion | The connection borrows the payload during completion delivery and creates one JavaScript-owned result |
 | Storage request | The SQLite adapter borrows the runtime range for the synchronous dispatch only |
 | Storage response | Dispatch retains an independent host response; after dispatch returns, Swift allocates final storage and receive performs one cross-heap copy |
@@ -123,7 +126,7 @@ DATABASE_RUNTIME_TRAITS=GraphIndexes \
 
 The feasibility gate builds the selected app-specific verification reactor
 with Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
-executes typed schema, mutation, and query requests first against the Node
+executes typed schema, Base creation, mutation, and query requests first against the Node
 reference host and then through an actual workerd Worker, Durable Object RPC,
 and Durable Object SQLite. The mutation creates an OWL-class entity, and a
 SPARQL ASK request must observe its generated RDF projection. The workerd
@@ -138,9 +141,9 @@ actual `VectorIndex` and `SwiftHNSW` products because the framework feature is
 cohesive, while supported execution is determined by the Cloudflare capability
 validator rather than link presence.
 
-The 2026-08-07 `AllRuntimeFeatures` gate produced a 9,145,363-byte optimized
-reactor (3,164,818 bytes gzip), a 67,108,864-byte address space, and a
-98.061 ms startup measurement. Durable Object RPC and SQLite persistence
+The 2026-08-10 `AllRuntimeFeatures` gate produced a 10,024,335-byte optimized
+reactor (3,510,573 bytes gzip), a 67,108,864-byte address space, and a
+32.457 ms startup measurement. Durable Object RPC and SQLite persistence
 after a workerd restart both passed.
 
 `SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and

@@ -1,12 +1,22 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageTesting
+import DatabaseKit
 import DatabaseTypes
 import DatabaseWire
 import Testing
 
 @Suite("Cloudflare database runtime", .serialized)
 struct CloudflareDatabaseRuntimeTests {
+    private var authorization: AuthorizationContext {
+        .authenticated(
+            Principal(
+                identifier: "runtime-verification",
+                roles: ["admin"]
+            )
+        )
+    }
+
     #if CLOUDFLARE_TEST_VECTOR_INDEXES
     @Test("HNSW fails at bootstrap before storage access")
     func rejectsHNSWBeforeStorageAccess() async throws {
@@ -95,10 +105,15 @@ struct CloudflareDatabaseRuntimeTests {
         let request = try DatabaseWireEncoder().encodeRequest(
             DatabaseOperations.capabilitiesDescribe,
             requestID: 42,
+            target: .database,
             metadata: OperationRequestMetadata(),
             request: EmptyOperationPayload()
         )
-        await runtime.invoke(callID: 2, requestBytes: request)
+        await runtime.invoke(
+            callID: 2,
+            requestBytes: request,
+            authorization: authorization
+        )
 
         let completionRecord = try #require(
             completion.completion(callID: 2)
@@ -123,7 +138,9 @@ struct CloudflareDatabaseRuntimeTests {
     func executesSchemaMutationAndQueryOperations() async throws {
         let completion = RecordingCloudflareDatabaseCompletion()
         let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
+            application: try RuntimeVerificationApplication(
+                persistentJobs: ()
+            ),
             storageClient: InMemoryCloudflareDurableObjectStorageClient(),
             jobScheduler: DiscardingDatabaseJobScheduler(),
             completion: CloudflareDatabaseCompletionChannel(
@@ -133,8 +150,43 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.start(callID: 60)
         #expect(completion.completion(callID: 60)?.status == .success)
 
+        let baseID = try Base.ID("runtime-verification")
+        let create = try await invoke(
+            DatabaseOperations.baseExecute,
+            target: .database,
+            request: BaseExecuteOperation.Request(
+                invocation: .create(
+                    baseID: baseID,
+                    placementID: try Base.Placement.ID("default"),
+                    initialGrants: [
+                        Security.Grant(
+                            subject: .principal("runtime-verification"),
+                            resource: .base(baseID),
+                            access: .all
+                        )
+                    ],
+                    expectedRevision: 0,
+                    idempotencyKey: "runtime-verification-base"
+                )
+            ),
+            requestID: 600,
+            callID: 600,
+            metadata: OperationRequestMetadata(
+                idempotencyKey: "runtime-verification-base"
+            ),
+            runtime: runtime,
+            completion: completion
+        )
+        guard case .job = create else {
+            Issue.record("Base creation did not return a persistent job")
+            return
+        }
+        await runtime.alarm(callID: 601)
+        #expect(completion.completion(callID: 601)?.status == .success)
+
         let schema = try await invoke(
             DatabaseOperations.schemaDescribe,
+            target: .database,
             request: EmptyOperationPayload(),
             requestID: 61,
             callID: 61,
@@ -154,6 +206,7 @@ struct CloudflareDatabaseRuntimeTests {
         )
         let mutation = try await invoke(
             DatabaseOperations.mutationExecute,
+            target: .base(baseID),
             request: MutationExecuteOperation.Request(
                 input: .entities([
                     MutationExecuteOperation.Change(
@@ -183,6 +236,7 @@ struct CloudflareDatabaseRuntimeTests {
 
         let query = try await invoke(
             DatabaseOperations.queryExecute,
+            target: .base(baseID),
             request: QueryExecuteOperation.Request(
                 input: .text(
                     language: .sql,
@@ -249,13 +303,21 @@ struct CloudflareDatabaseRuntimeTests {
             limits: limits
         )
 
-        await runtime.invoke(callID: 20, requestBytes: [1])
+        await runtime.invoke(
+            callID: 20,
+            requestBytes: [1],
+            authorization: authorization
+        )
         #expect(completion.completion(callID: 20)?.status == .notStarted)
 
         await runtime.start(callID: 21)
         #expect(completion.completion(callID: 21)?.status == .success)
 
-        await runtime.invoke(callID: 22, requestBytes: [0, 1, 2, 3, 4])
+        await runtime.invoke(
+            callID: 22,
+            requestBytes: [0, 1, 2, 3, 4],
+            authorization: authorization
+        )
         #expect(completion.completion(callID: 22)?.status == .requestTooLarge)
     }
 
@@ -272,17 +334,26 @@ struct CloudflareDatabaseRuntimeTests {
         )
 
         await runtime.start(callID: 23)
-        await runtime.invoke(callID: 24, requestBytes: [0])
+        await runtime.invoke(
+            callID: 24,
+            requestBytes: [0],
+            authorization: authorization
+        )
 
         #expect(completion.completion(callID: 24)?.status == .invalidRequestFrame)
 
         let validRequest = try DatabaseWireEncoder().encodeRequest(
             DatabaseOperations.capabilitiesDescribe,
             requestID: 25,
+            target: .database,
             metadata: OperationRequestMetadata(),
             request: EmptyOperationPayload()
         )
-        await runtime.invoke(callID: 25, requestBytes: validRequest)
+        await runtime.invoke(
+            callID: 25,
+            requestBytes: validRequest,
+            authorization: authorization
+        )
         #expect(completion.completion(callID: 25)?.status == .success)
     }
 
@@ -396,10 +467,15 @@ struct CloudflareDatabaseRuntimeTests {
         let request = try DatabaseWireEncoder().encodeRequest(
             DatabaseOperations.capabilitiesDescribe,
             requestID: 52,
+            target: .database,
             metadata: OperationRequestMetadata(),
             request: EmptyOperationPayload()
         )
-        await runtime.invoke(callID: 52, requestBytes: request)
+        await runtime.invoke(
+            callID: 52,
+            requestBytes: request,
+            authorization: authorization
+        )
 
         #expect(
             completion.completion(callID: 52)?.status
@@ -412,6 +488,7 @@ struct CloudflareDatabaseRuntimeTests {
 
     private func invoke<Request: Sendable, Response: Sendable>(
         _ operation: DatabaseOperation<Request, Response>,
+        target: DatabaseOperationTarget,
         request: Request,
         requestID: UInt64,
         callID: UInt32,
@@ -422,10 +499,15 @@ struct CloudflareDatabaseRuntimeTests {
         let requestBytes = try DatabaseWireEncoder().encodeRequest(
             operation,
             requestID: requestID,
+            target: target,
             metadata: metadata,
             request: request
         )
-        await runtime.invoke(callID: callID, requestBytes: requestBytes)
+        await runtime.invoke(
+            callID: callID,
+            requestBytes: requestBytes,
+            authorization: authorization
+        )
         let completed = try #require(completion.completion(callID: callID))
         #expect(completed.status == .success)
         let decoded = try DatabaseWireDecoder().decodeResponse(

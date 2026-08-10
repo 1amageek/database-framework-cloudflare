@@ -1,6 +1,7 @@
 #if arch(wasm32)
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
+import DatabaseKit
 import DatabaseServer
 import DatabaseTypes
 import Synchronization
@@ -10,6 +11,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
     private let application: AnyDatabaseServerApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
+    private let storageLayout: CloudflareDatabaseStorageLayout
     private let completion: CloudflareDatabaseCompletionChannel
     private let limits: CloudflareDatabaseRuntimeLimits
     private let storageTransportLimits: CloudflareDatabaseStorageTransportLimits
@@ -64,6 +66,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         self.application = AnyDatabaseServerApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
+        self.storageLayout = application.storageLayout
         self.completion = completion
         self.limits = CloudflareDatabaseRuntimeLimits(
             maximumRequestBytes: maximumRequestBytes,
@@ -129,6 +132,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
                     application: application,
                     partitionIdentity: partitionIdentity,
                     storageLimits: storageLimits,
+                    storageLayout: storageLayout,
                     completion: completion,
                     limits: limits,
                     storageTransportLimits: storageTransportLimits
@@ -148,20 +152,47 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
 
     public func invoke(
         callID: UInt32,
+        authorizationAddress: UInt32,
+        authorizationByteCount: UInt32,
         requestAddress: UInt32,
         requestByteCount: UInt32
     ) {
-        let requestBytes: ByteString
+        var authorizationBytes: ByteString?
+        var requestBytes: ByteString?
+        do {
+            authorizationBytes = try invocationPayloadOwnership.consumePayload(
+                payloadAddress: authorizationAddress,
+                byteCount: authorizationByteCount
+            )
+        } catch {
+            authorizationBytes = nil
+        }
         do {
             requestBytes = try invocationPayloadOwnership.consumePayload(
                 payloadAddress: requestAddress,
                 byteCount: requestByteCount
             )
         } catch {
+            requestBytes = nil
+        }
+        guard let authorizationBytes, let requestBytes else {
             completeFailure(
                 callID: callID,
                 status: .invalidPayload,
-                message: "Database request payload is invalid"
+                message: "Database invocation payload is invalid"
+            )
+            return
+        }
+        let authorization: AuthorizationContext
+        do {
+            authorization = try CloudflareDatabaseAuthorizationCodec.decode(
+                authorizationBytes
+            )
+        } catch {
+            completeFailure(
+                callID: callID,
+                status: .invalidPayload,
+                message: "Database authorization payload is invalid"
             )
             return
         }
@@ -175,7 +206,8 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         }
         commandChannel.invoke(
             callID: callID,
-            requestBytes: requestBytes
+            requestBytes: requestBytes,
+            authorization: authorization
         )
     }
 

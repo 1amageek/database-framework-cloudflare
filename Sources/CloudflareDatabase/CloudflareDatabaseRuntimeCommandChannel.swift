@@ -1,6 +1,7 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageHostTransport
 import CloudflareDurableObjectStorageWire
+import DatabaseKit
 import DatabaseServer
 import DatabaseTypes
 
@@ -40,6 +41,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         application: AnyDatabaseServerApplication,
         partitionIdentity: StoragePartitionIdentity,
         storageLimits: CloudflareDurableObjectLimits,
+        storageLayout: CloudflareDatabaseStorageLayout,
         storageClient: StorageClient,
         jobScheduler: JobScheduler,
         completion: CloudflareDatabaseCompletionChannel,
@@ -49,6 +51,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
             application: application,
             partitionIdentity: partitionIdentity,
             storageLimits: storageLimits,
+            storageLayout: storageLayout,
             storageClient: storageClient,
             jobScheduler: jobScheduler,
             completion: completion,
@@ -85,6 +88,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         application: AnyDatabaseServerApplication,
         partitionIdentity: StoragePartitionIdentity,
         storageLimits: CloudflareDurableObjectLimits,
+        storageLayout: CloudflareDatabaseStorageLayout,
         completion: CloudflareDatabaseCompletionChannel =
             CloudflareDatabaseCompletionChannel(),
         limits: CloudflareDatabaseRuntimeLimits = .default,
@@ -98,6 +102,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
             application: application,
             partitionIdentity: partitionIdentity,
             storageLimits: storageLimits,
+            storageLayout: storageLayout,
             storageClient: CloudflareDurableObjectStorageWireClient(
                 transport: transport
             ),
@@ -114,7 +119,11 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         }
     }
 
-    public func invoke(callID: UInt32, requestBytes: ByteString) {
+    public func invoke(
+        callID: UInt32,
+        requestBytes: ByteString,
+        authorization: AuthorizationContext
+    ) {
         guard callID != 0 else {
             completeFailure(
                 callID: callID,
@@ -134,7 +143,8 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         Task {
             await runtime.invoke(
                 callID: callID,
-                requestBytes: requestBytes
+                requestBytes: requestBytes,
+                authorization: authorization
             )
         }
     }

@@ -10,6 +10,7 @@ public actor CloudflareDatabaseRuntime {
     private struct Invocation: Sendable {
         let callID: UInt32
         let requestBytes: ByteString
+        let authorization: AuthorizationContext
     }
 
     private enum PendingOperation: Sendable {
@@ -20,6 +21,7 @@ public actor CloudflareDatabaseRuntime {
     private let application: AnyDatabaseServerApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
+    private let storageLayout: CloudflareDatabaseStorageLayout
     private let storageClient: CloudflareDurableObjectStorageClientComposition
     private let jobScheduler: AnyDatabaseJobScheduler
     private let completion: CloudflareDatabaseCompletionChannel
@@ -45,6 +47,7 @@ public actor CloudflareDatabaseRuntime {
         self.application = AnyDatabaseServerApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
+        self.storageLayout = application.storageLayout
         self.storageClient = CloudflareDurableObjectStorageClientComposition(storageClient)
         self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
         self.completion = completion
@@ -58,6 +61,7 @@ public actor CloudflareDatabaseRuntime {
         application: AnyDatabaseServerApplication,
         partitionIdentity: StoragePartitionIdentity,
         storageLimits: CloudflareDurableObjectLimits,
+        storageLayout: CloudflareDatabaseStorageLayout,
         storageClient: StorageClient,
         jobScheduler: JobScheduler,
         completion: CloudflareDatabaseCompletionChannel,
@@ -66,6 +70,7 @@ public actor CloudflareDatabaseRuntime {
         self.application = application
         self.partitionIdentity = partitionIdentity
         self.storageLimits = storageLimits
+        self.storageLayout = storageLayout
         self.storageClient = CloudflareDurableObjectStorageClientComposition(
             storageClient
         )
@@ -116,13 +121,30 @@ public actor CloudflareDatabaseRuntime {
                         monotonicClock: CloudflareDatabaseMonotonicClock()
                     )
                 )
+                let storageTopology = try DatabaseStorageTopology(
+                    controlDomainID: storageLayout.domainID,
+                    domains: [
+                        try DatabaseStorageDomain(
+                            id: storageLayout.domainID,
+                            namespacePath: storageLayout.domainNamespacePath,
+                            storageEngine: storageEngine
+                        )
+                    ],
+                    placements: [
+                        try DatabaseStoragePlacement(
+                            id: storageLayout.placementID,
+                            domainID: storageLayout.domainID,
+                            path: storageLayout.baseNamespacePath
+                        )
+                    ],
+                    defaultPlacementID: storageLayout.placementID
+                )
                 let createdContainer = try await definition.open(
-                    storageEngine: storageEngine
+                    storageTopology: storageTopology
                 )
                 self.container = createdContainer
                 container = createdContainer
             }
-            try await container.migrateIfNeeded()
             let configuration = try await application.makeRuntimeConfiguration(
                 for: container
             )
@@ -150,7 +172,11 @@ public actor CloudflareDatabaseRuntime {
     }
 
     /// Enqueues one DatabaseWire request without allowing concurrent runtime entry.
-    public func invoke(callID: UInt32, requestBytes: ByteString) async {
+    public func invoke(
+        callID: UInt32,
+        requestBytes: ByteString,
+        authorization: AuthorizationContext
+    ) async {
         guard callID != 0 else {
             fail(callID: callID, status: .invalidCallID, message: "Call ID must be non-zero")
             return
@@ -178,7 +204,11 @@ public actor CloudflareDatabaseRuntime {
 
         pendingOperations.append(
             .invocation(
-                Invocation(callID: callID, requestBytes: requestBytes)
+                Invocation(
+                    callID: callID,
+                    requestBytes: requestBytes,
+                    authorization: authorization
+                )
             )
         )
         await processPendingOperationsIfNeeded()
@@ -264,7 +294,7 @@ public actor CloudflareDatabaseRuntime {
             let responseBytes = try await serverRuntime.execute(
                 invocation.requestBytes,
                 context: DatabaseRequestExecutionContext(
-                    authorization: .anonymous
+                    authorization: invocation.authorization
                 )
             )
             guard responseBytes.count <= limits.maximumResponseBytes else {

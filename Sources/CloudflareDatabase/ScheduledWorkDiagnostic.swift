@@ -80,6 +80,8 @@ enum ScheduledWorkDiagnostic {
             return "job.invalid_configuration"
         case .invalidRetryPolicy:
             return "job.invalid_retry_policy"
+        case .invalidTarget:
+            return "job.invalid_target"
         case .requestPayloadTooLarge:
             return "job.request_payload_too_large"
         case .specificationTooLarge:
@@ -116,6 +118,8 @@ enum ScheduledWorkDiagnostic {
             return "job.work_unit_overflow"
         case .sliceExceededBudget:
             return "job.slice_exceeded_budget"
+        case .sliceMadeNoProgress:
+            return "job.slice_made_no_progress"
         case .responseTooLarge:
             return "job.response_too_large"
         case .duplicateJobIdentifier:

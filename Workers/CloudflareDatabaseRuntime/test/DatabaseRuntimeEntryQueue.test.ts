@@ -10,17 +10,17 @@ test("runtime entry queue bounds pending client invocations", async () => {
   const queue = runtimeEntryQueue(2, 1024);
   const first = deferred<number>();
 
-  const firstResult = queue.enqueueInvocation(
+  const firstResult = enqueueInvocation(queue,
     new Uint8Array([1]),
     () => first.promise
   );
-  const secondResult = queue.enqueueInvocation(
+  const secondResult = enqueueInvocation(queue,
     new Uint8Array([2]),
     () => 2
   );
 
   await assert.rejects(
-    queue.enqueueInvocation(new Uint8Array([3]), () => 3),
+    enqueueInvocation(queue, new Uint8Array([3]), () => 3),
     (error: unknown) => error instanceof DatabaseInvocationCapacityError
       && error.reason === databaseInvocationCapacityReason.pendingInvocations
       && error.limit === 2
@@ -34,25 +34,25 @@ test("runtime entry queue bounds pending client invocations", async () => {
 });
 
 test("runtime entry queue bounds retained invocation bytes", async () => {
-  const queue = runtimeEntryQueue(4, 5);
+  const queue = runtimeEntryQueue(4, 7);
   const first = deferred<void>();
-  const firstResult = queue.enqueueInvocation(
+  const firstResult = enqueueInvocation(queue,
     new Uint8Array([1, 2, 3]),
     () => first.promise
   );
-  const secondResult = queue.enqueueInvocation(
+  const secondResult = enqueueInvocation(queue,
     new Uint8Array([4, 5]),
     () => undefined
   );
 
   await assert.rejects(
-    queue.enqueueInvocation(new Uint8Array([6]), () => undefined),
+    enqueueInvocation(queue, new Uint8Array([6]), () => undefined),
     (error: unknown) => error instanceof DatabaseInvocationCapacityError
       && error.reason
         === databaseInvocationCapacityReason.pendingInvocationBytes
-      && error.limit === 5
-      && error.pending === 5
-      && error.requested === 1
+      && error.limit === 7
+      && error.pending === 7
+      && error.requested === 2
   );
 
   first.resolve();
@@ -66,13 +66,13 @@ test("runtime entry queue accounts for a retained backing buffer", async () => {
   const request = backing.subarray(3, 4);
 
   await assert.rejects(
-    queue.enqueueInvocation(request, () => undefined),
+    enqueueInvocation(queue, request, () => undefined),
     (error: unknown) => error instanceof DatabaseInvocationCapacityError
       && error.reason
         === databaseInvocationCapacityReason.pendingInvocationBytes
       && error.limit === 4
       && error.pending === 0
-      && error.requested === 8
+      && error.requested === 9
   );
 });
 
@@ -80,12 +80,12 @@ test("runtime entry queue continues in FIFO order after failure", async () => {
   const queue = runtimeEntryQueue(3, 1024);
   const first = deferred<void>();
   const executionOrder: number[] = [];
-  const firstResult = queue.enqueueInvocation(new Uint8Array([1]), async () => {
+  const firstResult = enqueueInvocation(queue, new Uint8Array([1]), async () => {
     executionOrder.push(1);
     await first.promise;
     throw new Error("simulated failure");
   });
-  const secondResult = queue.enqueueInvocation(new Uint8Array([2]), () => {
+  const secondResult = enqueueInvocation(queue, new Uint8Array([2]), () => {
     executionOrder.push(2);
     return 2;
   });
@@ -102,7 +102,7 @@ test("scheduled work has reserved FIFO admission when invocations are full", asy
   const queue = runtimeEntryQueue(1, 1024);
   const invocation = deferred<void>();
   const executionOrder: string[] = [];
-  const invocationResult = queue.enqueueInvocation(
+  const invocationResult = enqueueInvocation(queue,
     new Uint8Array([1]),
     async () => {
       executionOrder.push("invocation");
@@ -114,7 +114,7 @@ test("scheduled work has reserved FIFO admission when invocations are full", asy
   });
 
   await assert.rejects(
-    queue.enqueueInvocation(new Uint8Array([2]), () => undefined),
+    enqueueInvocation(queue, new Uint8Array([2]), () => undefined),
     DatabaseInvocationCapacityError
   );
   assert.equal(queue.pendingScheduledWorkCount, 1);
@@ -130,7 +130,7 @@ test("runtime entry queue continues after scheduled work fails", async () => {
   const queue = runtimeEntryQueue(2, 1024);
   const firstInvocation = deferred<void>();
   const executionOrder: string[] = [];
-  const firstResult = queue.enqueueInvocation(
+  const firstResult = enqueueInvocation(queue,
     new Uint8Array([1]),
     async () => {
       executionOrder.push("first-invocation");
@@ -141,7 +141,7 @@ test("runtime entry queue continues after scheduled work fails", async () => {
     executionOrder.push("scheduled-work");
     throw new Error("simulated scheduled work failure");
   });
-  const secondResult = queue.enqueueInvocation(
+  const secondResult = enqueueInvocation(queue,
     new Uint8Array([2]),
     () => {
       executionOrder.push("second-invocation");
@@ -174,6 +174,18 @@ function runtimeEntryQueue(
     maximumPendingInvocations,
     maximumPendingInvocationBytes,
   });
+}
+
+function enqueueInvocation<Response>(
+  queue: DatabaseRuntimeEntryQueue,
+  requestBytes: Uint8Array,
+  operation: (ownedRequestBytes: Uint8Array) => Promise<Response> | Response
+): Promise<Response> {
+  return queue.enqueueInvocation(
+    requestBytes,
+    new Uint8Array([1]),
+    (ownedRequestBytes) => operation(ownedRequestBytes)
+  );
 }
 
 function deferred<Value>(): {

@@ -11,6 +11,13 @@ struct ScheduledWorkFailureJobService: DatabaseJobService {
 
     let failure: Failure
 
+    func baseAdmission(
+        for operation: JobOperationIdentifier
+    ) throws -> DatabaseBaseAdmissionKind {
+        _ = operation
+        throw RuntimeVerificationError.unexpectedServiceOperation
+    }
+
     func start(
         _ request: JobStartOperation.Request,
         context: DatabaseOperationContext

@@ -14,6 +14,7 @@ final class CloudflareHNSWRejectionApplication:
     CloudflareDatabaseApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
+    let storageLayout: CloudflareDatabaseStorageLayout
 
     private let indexConfiguration: any IndexRuntimeConfiguration
 
@@ -22,6 +23,12 @@ final class CloudflareHNSWRejectionApplication:
     ) throws {
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "cloudflare-hnsw-rejection"
+        )
+        storageLayout = try CloudflareDatabaseStorageLayout(
+            domainID: DatabaseStorageDomain.ID("primary"),
+            domainNamespacePath: ["database", "hnsw-rejection"],
+            placementID: Base.Placement.ID("default"),
+            baseNamespacePath: ["bases"]
         )
         self.indexConfiguration = indexConfiguration
             ?? VectorIndexConfiguration<CloudflareHNSWRejectionDocument>(
@@ -43,7 +50,7 @@ final class CloudflareHNSWRejectionApplication:
                     )
                 ]
             ),
-            security: .disabled,
+            security: .enabled(),
             monotonicClock: SystemStorageClock(),
             wallClock: RealtimeDatabaseWallClock(),
             indexConfigurations: [indexConfiguration]

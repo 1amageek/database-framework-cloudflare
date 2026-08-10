@@ -38,6 +38,8 @@ struct RuntimeVerificationIVFDocument {
     )
 }
 
+extension RuntimeVerificationIVFDocument: RuntimeVerificationSecurityPolicy {}
+
 @Persistable
 struct RuntimeVerificationPQDocument {
     #Directory<RuntimeVerificationPQDocument>(
@@ -56,6 +58,8 @@ struct RuntimeVerificationPQDocument {
     )
 }
 
+extension RuntimeVerificationPQDocument: RuntimeVerificationSecurityPolicy {}
+
 @Persistable
 struct RuntimeVerificationFlatDocument {
     #Directory<RuntimeVerificationFlatDocument>(
@@ -73,4 +77,6 @@ struct RuntimeVerificationFlatDocument {
         name: "RuntimeVerificationFlatDocument_embedding"
     )
 }
+
+extension RuntimeVerificationFlatDocument: RuntimeVerificationSecurityPolicy {}
 #endif

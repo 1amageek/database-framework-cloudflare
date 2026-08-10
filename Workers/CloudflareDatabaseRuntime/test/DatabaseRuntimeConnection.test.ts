@@ -29,6 +29,14 @@ import { controllableDatabaseRuntimeInstantiator } from "./ControllableDatabaseR
 const emptyRuntimeProgram = new WebAssembly.Module(
   new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
 );
+const testAuthorizationBytes = new Uint8Array([1]);
+
+function executeDatabaseRequest(
+  connection: DatabaseRuntimeConnection,
+  requestBytes: Uint8Array
+): Promise<Uint8Array> {
+  return connection.execute(requestBytes, testAuthorizationBytes);
+}
 
 test("runtime connection shutdown rejects subsequent calls without a fatal reset", async () => {
   const runtimeFailureReasons: string[] = [];
@@ -45,7 +53,7 @@ test("runtime connection shutdown rejects subsequent calls without a fatal reset
   connection.shutdown();
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     DatabaseRuntimeConnectionShutdownError
   );
   assert.deepEqual(runtimeFailureReasons, []);
@@ -73,7 +81,7 @@ test("runtime connection owns request bytes across asynchronous runtime executio
     () => undefined
   );
 
-  const response = await connection.execute(new Uint8Array([1, 2, 3]));
+  const response = await executeDatabaseRequest(connection, new Uint8Array([1, 2, 3]));
 
   assert.deepEqual([...response], [1, 2, 3]);
   assert.equal(invocationCount, 1);
@@ -91,7 +99,7 @@ test("runtime connection honors the logical range of an offset request view", as
   );
   const backing = new Uint8Array([0xff, 0x01, 0x02, 0x03, 0xff]);
 
-  const response = await connection.execute(backing.subarray(1, 4));
+  const response = await executeDatabaseRequest(connection, backing.subarray(1, 4));
 
   assert.deepEqual([...response], [0x01, 0x02, 0x03]);
 });
@@ -106,7 +114,7 @@ test("runtime connection owns completion bytes before runtime memory is reused",
     () => undefined
   );
 
-  const response = await connection.execute(new Uint8Array([1, 2, 3]));
+  const response = await executeDatabaseRequest(connection, new Uint8Array([1, 2, 3]));
 
   assert.deepEqual([...response], [1, 2, 3]);
 });
@@ -134,12 +142,12 @@ test("runtime connection releases request payload when copying fails before invo
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1, 2, 3])),
+    executeDatabaseRequest(connection, new Uint8Array([1, 2, 3])),
     (error: unknown) => error instanceof RangeError
       && error.message === "Database runtime payload range is out of bounds"
   );
   assert.equal(invocationCount, 0);
-  assert.equal(releasedPayloadCount, 1);
+  assert.equal(releasedPayloadCount, 2);
 });
 
 test("runtime connection rejects a zero request payload address before copying or invoking", async () => {
@@ -166,13 +174,13 @@ test("runtime connection rejects a zero request payload address before copying o
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1, 2, 3])),
+    executeDatabaseRequest(connection, new Uint8Array([1, 2, 3])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.runtimeFailed
       && error.message === "Database runtime returned a zero request payload address"
   );
   assert.equal(invocationCount, 0);
-  assert.equal(releasedPayloadCount, 0);
+  assert.equal(releasedPayloadCount, 1);
   assert.deepEqual(
     runtimeFailureReasons,
     ["Database runtime returned a zero request payload address"]
@@ -191,8 +199,8 @@ test("call IDs remain positive across the JavaScript and WebAssembly i32 boundar
   const state = connection as unknown as { nextCallID: number };
   state.nextCallID = 0x7fff_ffff;
 
-  const first = await connection.execute(new Uint8Array([7]));
-  const second = await connection.execute(new Uint8Array([8]));
+  const first = await executeDatabaseRequest(connection, new Uint8Array([7]));
+  const second = await executeDatabaseRequest(connection, new Uint8Array([8]));
 
   assert.deepEqual([...first], [7]);
   assert.deepEqual([...second], [8]);
@@ -246,7 +254,7 @@ test("runtime connection propagates typed Unicode completion failures", async ()
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.runtimeFailed
       && error.message === "simulated failure 🚫"
@@ -269,13 +277,13 @@ test("runtime failure completion terminates the runtime generation", async () =>
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.runtimeFailed
       && error.message === "runtime invariant failed"
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([2])),
+    executeDatabaseRequest(connection, new Uint8Array([2])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.runtimeFailed
       && error.message === "runtime invariant failed"
@@ -344,12 +352,12 @@ test("ABI invariant completion failures terminate the runtime generation", async
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.invalidPayload
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([2])),
+    executeDatabaseRequest(connection, new Uint8Array([2])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.invalidPayload
   );
@@ -376,7 +384,7 @@ test("oversized failure payloads terminate before UTF-8 decoding", async () => {
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeFailurePayloadLimitError
       && error.message === "Database runtime failure payload exceeds the connection limit"
   );
@@ -406,7 +414,7 @@ test("terminal failure status wins over the success response limit", async () =>
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.runtimeFailed
       && error.message === "fatal"
@@ -430,7 +438,7 @@ test("malformed UTF-8 failure payloads terminally poison the runtime", async () 
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     DatabaseRuntimeFailureEncodingError
   );
   assert.deepEqual(
@@ -438,7 +446,7 @@ test("malformed UTF-8 failure payloads terminally poison the runtime", async () 
     ["Database runtime returned a malformed UTF-8 failure payload"]
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([2])),
+    executeDatabaseRequest(connection, new Uint8Array([2])),
     DatabaseRuntimeFailureEncodingError
   );
 });
@@ -455,7 +463,7 @@ test("runtime connection routes storage services through the StorageKit dispatch
     () => undefined
   );
 
-  const response = await connection.execute(new Uint8Array([4, 5]));
+  const response = await executeDatabaseRequest(connection, new Uint8Array([4, 5]));
 
   assert.deepEqual([...response], [4, 5, 9]);
 });
@@ -482,7 +490,7 @@ test("storage responses do not consume connection-owned payload count", async ()
   );
 
   assert.deepEqual(
-    [...(await connection.execute(new Uint8Array([1])))],
+    [...(await executeDatabaseRequest(connection, new Uint8Array([1])))],
     [9]
   );
   assert.deepEqual(runtimeFailureReasons, []);
@@ -502,14 +510,14 @@ test("storage responses do not consume connection-owned payload bytes", async ()
       maximumResponseBytes: 1,
       maximumStorageRequestBytes: 1,
       maximumStorageResponseBytes: 1,
-      maximumPayloadCountPerInvocationSet: 1,
-      maximumPayloadBytesPerInvocationSet: 1,
+      maximumPayloadCountPerInvocationSet: 2,
+      maximumPayloadBytesPerInvocationSet: 2,
     }),
     () => undefined
   );
 
   assert.deepEqual(
-    [...(await connection.execute(new Uint8Array([1])))],
+    [...(await executeDatabaseRequest(connection, new Uint8Array([1])))],
     [9]
   );
 });
@@ -525,14 +533,14 @@ test("runtime connection resets payload budgets after each call", async () => {
       maximumResponseBytes: 1,
       maximumStorageRequestBytes: 1,
       maximumStorageResponseBytes: 1,
-      maximumPayloadCountPerInvocationSet: 1,
+      maximumPayloadCountPerInvocationSet: 2,
       maximumPayloadBytesPerInvocationSet: 5,
     }),
     () => undefined
   );
 
-  assert.deepEqual([...(await connection.execute(new Uint8Array([1])))], [1]);
-  assert.deepEqual([...(await connection.execute(new Uint8Array([2])))], [2]);
+  assert.deepEqual([...(await executeDatabaseRequest(connection, new Uint8Array([1])))], [1]);
+  assert.deepEqual([...(await executeDatabaseRequest(connection, new Uint8Array([2])))], [2]);
 });
 
 test("runtime connection rejects an oversized initial address space", async () => {
@@ -569,7 +577,7 @@ test("storage response length mismatch is terminal", async () => {
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseStorageResponseStateError
       && error.reason
         === databaseStorageResponseStateErrorReason.responseLengthMismatch
@@ -597,7 +605,7 @@ test("runtime connection honors an offset storage response view", async () => {
     () => undefined
   );
 
-  const response = await connection.execute(new Uint8Array([0]));
+  const response = await executeDatabaseRequest(connection, new Uint8Array([0]));
 
   assert.deepEqual([...response], [4, 5, 9]);
 });
@@ -614,7 +622,7 @@ test("runtime connection rejects storage responses that alias runtime memory", a
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     DatabaseStorageResponseOwnershipError
   );
   assert.deepEqual(
@@ -637,12 +645,12 @@ test("runtime connection enforces request and response limits", async () => {
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1, 2, 3])),
+    executeDatabaseRequest(connection, new Uint8Array([1, 2, 3])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.requestTooLarge
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([1, 2])),
+    executeDatabaseRequest(connection, new Uint8Array([1, 2])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.responseTooLarge
   );
@@ -665,12 +673,12 @@ test("response limits are checked before reading runtime memory", async () => {
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.responseTooLarge
   );
 
-  const response = await connection.execute(new Uint8Array([7]));
+  const response = await executeDatabaseRequest(connection, new Uint8Array([7]));
   assert.deepEqual([...response], [7]);
 });
 
@@ -713,12 +721,12 @@ test("a runtime invocation trap permanently poisons its runtime generation", asy
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof Error
       && error.message === "invoke trap"
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([2])),
+    executeDatabaseRequest(connection, new Uint8Array([2])),
     (error: unknown) => error instanceof Error
       && error.message === "invoke trap"
   );
@@ -746,7 +754,7 @@ test("a runtime alarm trap permanently poisons its runtime generation", async ()
       && error.message === "alarm trap"
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof Error
       && error.message === "alarm trap"
   );
@@ -771,8 +779,8 @@ test("a scheduled task failure rejects every pending call and cancels every time
   );
 
   const resultsPromise = Promise.allSettled([
-    connection.execute(new Uint8Array([1])),
-    connection.execute(new Uint8Array([2])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([2])),
   ]);
   assert.equal(timer.activeCount(), 2);
 
@@ -807,7 +815,7 @@ test("task scheduling capacity failure resets the runtime generation", async () 
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseTaskScheduleError
       && error.reason
         === databaseTaskScheduleErrorReason.capacityExceeded
@@ -817,7 +825,7 @@ test("task scheduling capacity failure resets the runtime generation", async () 
     ["Scheduled database task count exceeds 1"]
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     DatabaseTaskScheduleError
   );
 });
@@ -985,7 +993,7 @@ for (const [violation, expectedMessage] of completionProtocolViolations) {
     );
 
     await assert.rejects(
-      connection.execute(new Uint8Array([1])),
+      executeDatabaseRequest(connection, new Uint8Array([1])),
       (error: unknown) => error instanceof Error
         && error.message === expectedMessage
     );
@@ -993,7 +1001,7 @@ for (const [violation, expectedMessage] of completionProtocolViolations) {
     assert.deepEqual(runtimeFailureReasons, [expectedMessage]);
 
     await assert.rejects(
-      connection.execute(new Uint8Array([2])),
+      executeDatabaseRequest(connection, new Uint8Array([2])),
       (error: unknown) => error instanceof Error
         && error.message === expectedMessage
     );
@@ -1019,7 +1027,7 @@ test("a timed out call resets and permanently poisons its runtime instance", asy
     timer.timer
   );
 
-  const timedOutCall = connection.execute(new Uint8Array([1]));
+  const timedOutCall = executeDatabaseRequest(connection, new Uint8Array([1]));
   assert.equal(timer.activeCount(), 1);
   timer.fireNext();
 
@@ -1035,7 +1043,7 @@ test("a timed out call resets and permanently poisons its runtime instance", asy
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([2, 3])),
+    executeDatabaseRequest(connection, new Uint8Array([2, 3])),
     (error: unknown) => error instanceof DatabaseInvocationTimeoutError
       && error.timeoutMilliseconds === 25
   );
@@ -1075,7 +1083,7 @@ test("a non-empty successful alarm payload poisons its runtime generation", asyn
       && error.status === databaseCompletionStatus.runtimeFailed
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
       && error.status === databaseCompletionStatus.runtimeFailed
   );
@@ -1108,7 +1116,7 @@ test("runtime connection preserves runtime alarm failures for platform retry", a
   );
   await connection.alarm();
   assert.deepEqual(
-    await connection.execute(new Uint8Array([1, 2, 3])),
+    await executeDatabaseRequest(connection, new Uint8Array([1, 2, 3])),
     new Uint8Array([1, 2, 3])
   );
   assert.deepEqual(runtimeFailureReasons, []);
@@ -1132,12 +1140,12 @@ test("scheduled-work failure status from a request poisons the runtime", async (
     "Database runtime returned a scheduled-work failure for a request call";
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof Error
       && error.message === expectedMessage
   );
   await assert.rejects(
-    connection.execute(new Uint8Array([2])),
+    executeDatabaseRequest(connection, new Uint8Array([2])),
     (error: unknown) => error instanceof Error
       && error.message === expectedMessage
   );
@@ -1193,7 +1201,7 @@ test("runtime completion waits for Durable Object alarm persistence", async () =
   );
 
   let settled = false;
-  const responsePromise = connection.execute(new Uint8Array([8])).then(
+  const responsePromise = executeDatabaseRequest(connection, new Uint8Array([8])).then(
     (response) => {
       settled = true;
       return response;
@@ -1228,7 +1236,7 @@ test("alarm persistence failure poisons the runtime and requests a reset", async
   );
 
   await assert.rejects(
-    connection.execute(new Uint8Array([1])),
+    executeDatabaseRequest(connection, new Uint8Array([1])),
     (error: unknown) => error instanceof DatabaseAlarmScheduleError
       && error.reason.message === "alarm storage unavailable"
   );

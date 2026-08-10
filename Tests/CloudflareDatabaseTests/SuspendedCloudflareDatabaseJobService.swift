@@ -8,6 +8,13 @@ actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var resumeScheduledWork: CheckedContinuation<Void, Never>?
 
+    nonisolated func baseAdmission(
+        for operation: JobOperationIdentifier
+    ) throws -> DatabaseBaseAdmissionKind {
+        _ = operation
+        throw RuntimeVerificationError.unexpectedServiceOperation
+    }
+
     func waitUntilScheduledWorkStarts() async {
         guard !hasStartedScheduledWork else {
             return

@@ -9,4 +9,7 @@ public protocol CloudflareDatabaseApplication: DatabaseServerApplication {
 
     /// Storage limits enforced by the platform adapter.
     var storageLimits: CloudflareDurableObjectLimits { get }
+
+    /// Single-domain layout consumed by DatabaseFramework's topology owner.
+    var storageLayout: CloudflareDatabaseStorageLayout { get }
 }

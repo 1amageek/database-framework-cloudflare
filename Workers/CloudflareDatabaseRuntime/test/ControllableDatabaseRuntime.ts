@@ -66,6 +66,7 @@ export function controllableDatabaseRuntimeInstantiator(
     let nextTaskID = 1;
     let invocationCount = 0;
     let alarmInvocationCount = 0;
+    let invocationPayloadReservationCount = 0;
     const scheduledTasks = new Map<number, () => void>();
     const runtimeServices: WebAssembly.Imports = {};
 
@@ -129,10 +130,17 @@ export function controllableDatabaseRuntimeInstantiator(
     const runtimeEndpoints: WebAssembly.Exports = {
       memory: runtimeAddressSpace,
       database_alloc: (byteCount: number) => {
-        if (behavior.kind === "zeroRequestPayloadAddress" && byteCount > 0) {
+        if (byteCount > 0) {
+          invocationPayloadReservationCount += 1;
+        }
+        if (behavior.kind === "zeroRequestPayloadAddress"
+            && byteCount > 0
+            && invocationPayloadReservationCount === 2) {
           return 0;
         }
-        if (behavior.kind === "invalidRequestPayloadAddress" && byteCount > 0) {
+        if (behavior.kind === "invalidRequestPayloadAddress"
+            && byteCount > 0
+            && invocationPayloadReservationCount === 2) {
           return runtimeAddressSpace.buffer.byteLength;
         }
         return reservePayload(byteCount);
@@ -174,9 +182,16 @@ export function controllableDatabaseRuntimeInstantiator(
       },
       database_invoke: (
         callID: number,
+        authorizationAddress: number,
+        authorizationByteCount: number,
         payloadAddress: number,
         byteCount: number
       ) => {
+        invocationPayloadReservationCount = 0;
+        borrowRuntimeBytes(
+          authorizationAddress,
+          authorizationByteCount
+        );
         lifecycleObserver.didInvoke?.(payloadAddress, byteCount);
         if (behavior.kind === "commandFailure"
             && behavior.runtimeCommand === "invoke") {

@@ -5,7 +5,13 @@ export type DatabaseRuntimeEndpoints = {
   reservePayload(byteCount: number): number;
   releasePayload(payloadAddress: number, byteCount: number): void;
   start(callID: number): void;
-  invoke(callID: number, payloadAddress: number, byteCount: number): void;
+  invoke(
+    callID: number,
+    authorizationAddress: number,
+    authorizationByteCount: number,
+    requestAddress: number,
+    requestByteCount: number
+  ): void;
   alarm(callID: number): void;
   runScheduledTask(taskID: number): void;
   resumeClockWait(waitID: number): void;

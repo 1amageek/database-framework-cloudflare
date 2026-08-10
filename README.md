@@ -25,7 +25,8 @@ flowchart LR
 
 | Layer | Responsibility |
 |---|---|
-| `database-kit` | Foundation-independent values, QueryIR, and canonical DatabaseWire |
+| `database-types` | Foundation-independent primitive values and immutable byte ownership |
+| `database-kit` | Schema, QueryIR, Base/Security semantics, and canonical DatabaseWire |
 | `database-framework` | DBContainer, graph and SPARQL execution, relationships, ontology, SHACL, indexes, and server services |
 | `storage-kit` | Durable Object storage client, storage transport contract, and SQLite adapter |
 | `database-framework-cloudflare` Swift | Application composition, full runtime lifecycle, zero-copy request ownership, scheduling, and completion |
@@ -41,8 +42,9 @@ The package exports one library product, `CloudflareDatabase`.
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseApplication` | Supplies the application storage partition identity, unopened container definition, migrations, and server configuration |
-| `CloudflareDatabaseApplicationComposition` | Preserves the application-specific factories behind a stable runtime owner |
+| `CloudflareDatabaseApplication` | Supplies the application storage identity, single-domain layout, unopened container definition, and server configuration |
+| `CloudflareDatabaseStorageLayout` | Names the Cloudflare data domain and Base placement consumed by DatabaseFramework |
+| `CloudflareDatabaseAuthorizationCodec` | Carries an already authenticated principal across the private host/reactor boundary |
 | `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through the full server runtime |
 | `CloudflareDatabaseRuntimeCommandChannel` | Submits synchronous boundary commands to the actor-owned runtime |
 | `CloudflareDatabaseRuntimeEntrypoint` | Owns one application runtime and implements operations called by the application's fixed exports |
@@ -55,20 +57,27 @@ The application implements `CloudflareDatabaseApplication` and constructs a
 runtime artifact: application schema and command registration are compile-time
 dependencies.
 
-Applications with a versioned schema pass their migration plan in the unopened
-container definition. The Cloudflare runtime validates host capabilities,
-opens storage, attaches the plan, and runs `migrateIfNeeded()` before serving a
-DatabaseWire request:
+Applications pass their schema and migration plan in the unopened container
+definition and declare the one physical Cloudflare domain plus the placement
+under which DatabaseFramework creates Base roots. The host adapter never
+interprets a Base, Composition, or Grant. Base provisioning and its schema
+migration run through the canonical persistent Base lifecycle job:
 
 ```swift
+let storageLayout = try CloudflareDatabaseStorageLayout(
+    domainID: DatabaseStorageDomain.ID("primary"),
+    domainNamespacePath: ["database", "calendar"],
+    placementID: Base.Placement.ID("default"),
+    baseNamespacePath: ["bases"]
+)
+
 func makeContainerDefinition() async throws
-    -> CloudflareDatabaseContainerDefinition {
-    CloudflareDatabaseContainerDefinition(
+    -> DatabaseContainerDefinition {
+    DatabaseContainerDefinition(
         schema: try ApplicationSchemaV1.makeSchema(),
         migrationPlan: ApplicationMigrationPlan.self,
         runtimeConfiguration: try ApplicationRuntime.configuration(),
-        security: .disabled,
-        databaseName: "application-database",
+        security: .enabled(),
         monotonicClock: ApplicationMonotonicClock(),
         wallClock: ApplicationWallClock()
     )
@@ -76,8 +85,10 @@ func makeContainerDefinition() async throws
 ```
 
 The initializer without `migrationPlan` remains the explicit choice for an
-unversioned schema. Storage ownership remains in the runtime in both cases;
-the application returns a definition rather than an opened `DBContainer`.
+unversioned schema. The runtime creates exactly one `DatabaseStorageTopology`
+from `storageLayout`; DatabaseFramework owns its control catalog, Base grants,
+and Base roots. Cloudflare remains one physical transaction domain. A
+multi-domain Composition belongs to a native server topology.
 
 ## Runtime feature traits
 
@@ -173,9 +184,12 @@ export class CalendarDatabaseDurableObject
 }
 ```
 
-Application Workers call `execute(Uint8Array)` through a Durable Object binding.
-Public administration endpoints, authentication, and storage-partition routing
-belong to the application Worker, not this package.
+Application Workers authenticate the external credential and call
+`execute(requestBytes, principal)` through a Durable Object binding. The
+principal contains the authenticated identifier, role claims, and canonical
+DatabaseWire `FieldObject` claim bytes. Raw credentials never enter the
+reactor. Public administration endpoints, credential validation, and
+storage-partition routing belong to the application Worker, not this package.
 
 ## Runtime flow
 
@@ -187,10 +201,11 @@ sequenceDiagram
   participant Server as DatabaseServerRuntime
   participant SQLite as DO SQLite
 
-  App->>DO: execute(DatabaseWire bytes)
+  App->>App: authenticate external credential
+  App->>DO: execute(DatabaseWire bytes, principal)
   DO->>DO: bounded FIFO admission
-  DO->>Runtime: invoke(call ID, owned request)
-  Runtime->>Server: execute DatabaseWire
+  DO->>Runtime: invoke(call ID, owned auth frame, owned request)
+  Runtime->>Server: execute DatabaseWire with AuthorizationContext
   Server->>Runtime: StorageKit request view
   Runtime->>DO: storage service call
   DO->>SQLite: synchronous transaction
@@ -209,7 +224,8 @@ The normative fixed boundary and ownership rules are documented in
 | Path | Ownership rule |
 |---|---|
 | Worker RPC request | FIFO admission retains the incoming backing store and accounts for its full retained size |
-| JavaScript to Swift invocation | One runtime allocation is filled, then ownership transfers to Swift |
+| Worker-authenticated principal | One bounded canonical authorization frame is retained and accounted beside the request |
+| JavaScript to Swift invocation | One allocation for each input is filled, then both owners transfer to Swift in one invocation |
 | Swift request decode | `DatabaseInvocationPayloadOwnership` creates an immutable payload owner; decoders use constant-time ranges |
 | Swift to JavaScript storage request | JavaScript borrows the runtime view only for the synchronous service call |
 | JavaScript to Swift storage response | The response is copied once between heaps into a runtime-owned allocation |
@@ -222,10 +238,11 @@ the runtime path.
 
 1. Durable Object construction migrates SQLite and creates the runtime inside
    `blockConcurrencyWhile`.
-2. Startup validates host capabilities before opening `DBContainer`, then
-   completes only after StorageKit, migrations, application readiness checks,
-   and the full `DatabaseServerRuntime` are ready. The verification application
-   executes Flat, IVF, and PQ write/index/query/cleanup checks when
+2. Startup validates host capabilities before opening `DBContainer`, installs
+   the single-domain topology, and completes only after StorageKit and the full
+   `DatabaseServerRuntime` are ready. Base creation and migration remain
+   explicit persistent operations. The verification application creates one
+   Base, then executes Flat, IVF, and PQ write/index/query/delete checks when
    `VectorIndexes` is selected; HNSW has a separate bootstrap-rejection check.
 3. Invocations and alarms use one FIFO queue, and Swift prevents concurrent
    runtime entry as a second invariant.
@@ -270,14 +287,11 @@ Database/
 └── database-framework-cloudflare/
 ```
 
-Run focused native verification with a bounded `xcodebuild` invocation:
+Run the strict native harness. It builds once, injects the pinned snapshot
+testing runtime into the generated `.xctestrun`, and executes without rebuilding:
 
 ```bash
-sh scripts/xcodebuild-timeout.sh 600 \
-  xcodebuild test -quiet \
-  -scheme database-framework-cloudflare-Package \
-  -destination 'platform=macOS,arch=arm64' \
-  -only-testing:CloudflareDatabaseTests
+scripts/xcode-test-harness
 ```
 
 Run Worker verification:
@@ -308,15 +322,16 @@ snapshot:
 
 | Measurement | Result |
 | --- | ---: |
-| Optimized reactor | 9,145,363 bytes |
-| Gzip-compressed reactor | 3,164,818 bytes |
+| Optimized reactor | 10,024,335 bytes |
+| Gzip-compressed reactor | 3,510,573 bytes |
 | WebAssembly address space | 67,108,864 bytes |
-| Startup | 98.061 ms |
+| Startup | 32.457 ms |
 | workerd Durable Object RPC | Passed |
 | SQLite persistence after restart | Passed |
 
 The same fixture executes Flat, IVF, and PQ and rejects HNSW before storage
-engine creation. Native package verification passes all 27 Cloudflare tests.
+engine creation. Native package verification passes all 32 Cloudflare tests,
+and the Worker package passes all 121 TypeScript tests.
 
 The gate defaults to `AllRuntimeFeatures`. Set `DATABASE_RUNTIME_TRAITS` to a
 comma-separated trait list for an application-specific artifact:

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-18
-- Protocol: Database reactor ABI v1
+- Protocol: Database reactor ABI v2
 
 ## Decision
 
@@ -37,13 +37,13 @@ contract are recorded in
 |---|---|---|
 | `database_alloc` | `(u32) -> u32` | Allocate runtime address space |
 | `database_dealloc` | `(u32, u32) -> void` | Release a runtime allocation |
-| `database_start` | `(u32) -> void` | Bootstrap storage, migrations, container, and server runtime |
-| `database_invoke` | `(u32, u32, u32) -> void` | Enqueue one DatabaseWire request |
+| `database_start` | `(u32) -> void` | Bootstrap storage topology, container, and server runtime |
+| `database_invoke` | `(u32, u32, u32, u32, u32) -> void` | Consume an authorization frame and DatabaseWire request, then enqueue one authenticated invocation |
 | `database_alarm` | `(u32) -> void` | Run one bounded persistent-job wake-up from a Durable Object alarm |
 | `database_executor_run` | `(u32) -> void` | Run one scheduled Swift task |
 | `database_clock_resume` | `(u32) -> void` | Resume one currently registered monotonic wait |
 
-The executor export is part of ABI v1. Swift async execution cannot make
+The executor export is part of ABI v2. Swift async execution cannot make
 progress in a persistent reactor without a host-driven executor wake-up.
 
 ## Imports
@@ -65,6 +65,31 @@ progress in a persistent reactor without a host-driven executor wake-up.
 All pointers are offsets into exported linear memory. Every byte count and
 aggregate frame is checked against an independently configured limit before
 copying or allocating.
+
+## Authentication boundary
+
+The application Worker authenticates the external credential before Durable
+Object RPC. It passes only an already authenticated principal to
+`CloudflareDatabaseDurableObject.execute(requestBytes, principal)`. The private
+ABI encodes that principal separately from DatabaseWire so the host cannot
+rewrite request semantics and a client cannot place self-asserted roles in the
+request envelope.
+
+The canonical authorization frame contains:
+
+```text
+"DBAU" magic
+  + little-endian version 1
+  + principal identifier
+  + canonical UTF-8 ordered unique roles
+  + canonical DatabaseWire FieldObject claim bytes
+```
+
+The frame is limited to 256 KiB. Identifiers, role count, role byte length,
+ordering, duplicate roles, trailing bytes, malformed claims, and the exact
+frame version are validated before `AuthorizationContext` is constructed.
+Raw bearer tokens, session cookies, and authentication secrets do not cross
+this ABI.
 
 ## Completion statuses
 
@@ -98,12 +123,12 @@ discarding an otherwise valid runtime generation.
 
 ## Byte ownership
 
-Ownership is part of ABI v1 and is not inferred from pointer lifetime.
+Ownership is part of ABI v2 and is not inferred from pointer lifetime.
 
 | Boundary | Ownership contract |
 |---|---|
 | `database_alloc` result before invocation | JavaScript owns the allocation and may release it with `database_dealloc` if storing the request fails |
-| `database_invoke` request | Calling the export consumes the allocation; JavaScript must not access or deallocate it afterward |
+| `database_invoke` authorization and request | Calling the export consumes both allocations, including when either payload is invalid; JavaScript must not access or deallocate either afterward |
 | `database_host.complete` payload | Swift lends the bytes for the synchronous service call; JavaScript copies them once into its heap before returning |
 | `storage_host.dispatch` request | Swift lends the bytes for the synchronous service call; JavaScript must not retain the view |
 | Storage dispatcher result | JavaScript owns an independent view that does not alias the borrowed runtime request |
@@ -131,8 +156,9 @@ aggregate memory limit.
 
 1. The Durable Object migrates its SQLite host schema and instantiates the
    reactor inside constructor-time `blockConcurrencyWhile`.
-2. `database_start` completes only after application migrations and the full
-   server runtime are ready.
+2. `database_start` completes only after the single Cloudflare storage topology,
+   container, and full server runtime are ready. Base creation and Base-local
+   schema migration remain explicit persistent operations.
 3. Database invocations and alarms enter one explicit FIFO queue. The Swift
    runtime also serializes both entry types as a defense-in-depth invariant.
 4. A completion timeout makes the runtime generation unusable. The Durable Object
@@ -152,8 +178,9 @@ aggregate memory limit.
 
 The release gate executes the same optimized reactor in Node and workerd. The
 workerd path must cross Worker routing, Durable Object RPC, the FIFO runtime
-owner, the synchronous StorageKit host ABI, and Durable Object SQLite. It then
-executes a DatabaseWire mutation for an OWL-class entity and verifies the
+owner, the authenticated ABI, the synchronous StorageKit host ABI, and Durable
+Object SQLite. It first creates and provisions a Base, then executes a
+DatabaseWire mutation for an OWL-class entity and verifies the
 generated RDF projection through a SPARQL ASK request. After restarting workerd
 with the same persisted state, both the document query and SPARQL ASK request
 must observe the prior mutation. When `VectorIndexes` is selected, startup
@@ -176,7 +203,7 @@ does not mistake link presence for supported Cloudflare execution.
   graph.
 - `DatabaseWire` and the StorageKit host wire remain separate protocols with
   separate limits.
-- ABI v1 has no negotiation or compatibility branch. Any ABI change requires
+- ABI v2 has no negotiation or compatibility branch. Any ABI change requires
   a deliberate new contract.
 - Fixed symbol spellings remain confined to boundary descriptors and ABI
   attributes. Swift and TypeScript declarations use runtime responsibility,

@@ -40,6 +40,9 @@ try {
   const schemaResponse = await execute(vectors.schemaDescribe);
   verifySuccessResponse(schemaResponse, vectors.schemaDescribe);
   assertPayloadContains(schemaResponse, "RuntimeVerificationDocument");
+  const baseCreateResponse = await execute(vectors.baseCreate);
+  verifySuccessResponse(baseCreateResponse, vectors.baseCreate);
+  await runScheduledWork();
   const mutationResponse = await execute(vectors.mutationExecute);
   verifySuccessResponse(mutationResponse, vectors.mutationExecute);
   const queryResponse = await execute(vectors.queryExecute);
@@ -48,6 +51,32 @@ try {
   const graphQueryResponse = await execute(vectors.queryAsk);
   verifySuccessResponse(graphQueryResponse, vectors.queryAsk);
   assertBooleanResponse(graphQueryResponse, true);
+  const vectorMutationResponse = await execute(vectors.vectorMutationExecute);
+  verifySuccessResponse(vectorMutationResponse, vectors.vectorMutationExecute);
+  const vectorIVFRebuildResponse = await execute(vectors.vectorIVFRebuild);
+  verifySuccessResponse(vectorIVFRebuildResponse, vectors.vectorIVFRebuild);
+  const vectorPQRebuildResponse = await execute(vectors.vectorPQRebuild);
+  verifySuccessResponse(vectorPQRebuildResponse, vectors.vectorPQRebuild);
+  const vectorIVFResponse = await execute(vectors.vectorIVFQuery);
+  verifySuccessResponse(vectorIVFResponse, vectors.vectorIVFQuery);
+  assertPayloadContains(
+    vectorIVFResponse,
+    "RuntimeVerificationIVFDocument-exact"
+  );
+  const vectorPQResponse = await execute(vectors.vectorPQQuery);
+  verifySuccessResponse(vectorPQResponse, vectors.vectorPQQuery);
+  assertPayloadContains(
+    vectorPQResponse,
+    "RuntimeVerificationPQDocument-exact"
+  );
+  const vectorFlatResponse = await execute(vectors.vectorFlatQuery);
+  verifySuccessResponse(vectorFlatResponse, vectors.vectorFlatQuery);
+  assertPayloadContains(
+    vectorFlatResponse,
+    "RuntimeVerificationFlatDocument-exact"
+  );
+  const vectorDeleteResponse = await execute(vectors.vectorDelete);
+  verifySuccessResponse(vectorDeleteResponse, vectors.vectorDelete);
 
   await stopWorker(worker);
   worker = null;
@@ -67,9 +96,13 @@ try {
     sqlitePersistenceAfterRestart: true,
     capabilitiesResponseBytes: capabilitiesResponse.byteLength,
     schemaResponseBytes: schemaResponse.byteLength,
+    baseCreateResponseBytes: baseCreateResponse.byteLength,
     mutationResponseBytes: mutationResponse.byteLength,
     queryResponseBytes: queryResponse.byteLength,
     graphQueryResponseBytes: graphQueryResponse.byteLength,
+    vectorIVFResponseBytes: vectorIVFResponse.byteLength,
+    vectorPQResponseBytes: vectorPQResponse.byteLength,
+    vectorFlatResponseBytes: vectorFlatResponse.byteLength,
     persistedGraphQueryResponseBytes:
       persistedGraphQueryResponse.byteLength,
   }, null, 2));
@@ -143,6 +176,17 @@ async function execute(requestBytes) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+async function runScheduledWork() {
+  const response = await fetch(`${endpoint}/scheduled-work`, {
+    method: "POST",
+  });
+  if (response.status !== 204) {
+    assert.fail(
+      `scheduled work returned HTTP ${response.status}: ${await response.text()}`
+    );
+  }
+}
+
 function verifySuccessResponse(response, request) {
   assert.ok(response.byteLength >= 22);
   const responseView = new DataView(
@@ -181,9 +225,57 @@ function assertPayloadContains(response, expectedText) {
 }
 
 function assertBooleanResponse(response, expectedValue) {
-  assert.equal(response.byteLength, 24);
-  assert.equal(response[22], 2);
-  assert.equal(response[23], expectedValue ? 1 : 0);
+  const payload = new DataView(
+    response.buffer,
+    response.byteOffset + 22,
+    response.byteLength - 22
+  );
+  let offset = 0;
+  const requireBytes = (byteCount) => {
+    assert.ok(
+      offset + byteCount <= payload.byteLength,
+      "boolean response is truncated"
+    );
+  };
+  requireBytes(4);
+  assert.equal(payload.getUint8(offset), 2);
+  offset += 1;
+  assert.equal(payload.getUint8(offset), expectedValue ? 1 : 0);
+  offset += 1;
+  assert.equal(
+    payload.getUint8(offset),
+    0,
+    "Base-local boolean response unexpectedly has provenance"
+  );
+  offset += 1;
+  assert.equal(
+    payload.getUint8(offset),
+    0,
+    "Base-local boolean response is not transactional"
+  );
+  offset += 1;
+  requireBytes(4);
+  const domainByteCount = payload.getUint32(offset, true);
+  offset += 4;
+  requireBytes(domainByteCount + 9);
+  const domain = new TextDecoder("utf-8", { fatal: true }).decode(
+    new Uint8Array(
+      payload.buffer,
+      payload.byteOffset + offset,
+      domainByteCount
+    )
+  );
+  offset += domainByteCount;
+  assert.equal(domain, "primary");
+  assert.equal(
+    payload.getUint8(offset),
+    0,
+    "boolean response did not use a version read point"
+  );
+  offset += 1;
+  payload.getBigUint64(offset, true);
+  offset += 8;
+  assert.equal(offset, payload.byteLength, "boolean response has trailing bytes");
 }
 
 async function stopWorker(child) {

@@ -22,6 +22,10 @@ import { databaseCompletionStatus } from "./DatabaseCompletionStatus";
 import { encodeDatabaseExecutionFailure } from "./DatabaseExecutionFailure";
 import { DatabaseExecutionInputError } from "./DatabaseExecutionInputError";
 import { DatabaseRuntimeInvocationError } from "./DatabaseRuntimeInvocationError";
+import {
+  encodeDatabaseAuthenticatedPrincipal,
+  type DatabaseAuthenticatedPrincipal,
+} from "./DatabaseAuthenticatedPrincipal";
 
 export abstract class CloudflareDatabaseDurableObject<
   Environment extends DatabaseRuntimeLimitEnvironment,
@@ -81,7 +85,10 @@ export abstract class CloudflareDatabaseDurableObject<
   }
 
   /** Consumes the Durable Object RPC-owned request view. */
-  async execute(requestBytes: Uint8Array): Promise<Uint8Array> {
+  async execute(
+    requestBytes: Uint8Array,
+    principal: DatabaseAuthenticatedPrincipal
+  ): Promise<Uint8Array> {
     try {
       if (!(requestBytes instanceof Uint8Array)) {
         throw new DatabaseExecutionInputError(
@@ -94,11 +101,18 @@ export abstract class CloudflareDatabaseDurableObject<
           "DatabaseWire request exceeds the Durable Object limit",
         );
       }
+      const authorizationBytes = encodeDatabaseAuthenticatedPrincipal(
+        principal
+      );
       return await this.runtimeEntryQueue.enqueueInvocation(
         requestBytes,
-        async (ownedRequest) => {
+        authorizationBytes,
+        async (ownedRequest, ownedAuthorization) => {
           const connection = await this.runtimeConnection();
-          const response = await connection.execute(ownedRequest);
+          const response = await connection.execute(
+            ownedRequest,
+            ownedAuthorization
+          );
           if (response.byteLength > this.connectionLimits.maximumResponseBytes) {
             throw new DatabaseRuntimeInvocationError(
               databaseCompletionStatus.responseTooLarge,

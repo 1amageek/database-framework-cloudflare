@@ -46,8 +46,10 @@ export function requireDatabaseRuntimeEndpoints(
     start: startEndpoint as (callID: number) => void,
     invoke: invokeEndpoint as (
       callID: number,
-      payloadAddress: number,
-      byteCount: number
+      authorizationAddress: number,
+      authorizationByteCount: number,
+      requestAddress: number,
+      requestByteCount: number
     ) => void,
     alarm: alarmEndpoint as (callID: number) => void,
     runScheduledTask: runScheduledTaskEndpoint as (taskID: number) => void,

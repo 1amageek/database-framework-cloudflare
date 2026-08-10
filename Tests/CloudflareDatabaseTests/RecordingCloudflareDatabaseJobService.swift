@@ -6,6 +6,13 @@ actor RecordingCloudflareDatabaseJobService: DatabaseJobService {
 
     private var scheduledRunCount = 0
 
+    nonisolated func baseAdmission(
+        for operation: JobOperationIdentifier
+    ) throws -> DatabaseBaseAdmissionKind {
+        _ = operation
+        throw RuntimeVerificationError.unexpectedServiceOperation
+    }
+
     func runCount() -> Int {
         scheduledRunCount
     }

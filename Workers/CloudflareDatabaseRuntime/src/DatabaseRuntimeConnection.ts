@@ -28,6 +28,9 @@ import { WasiPreview1Host } from "./WasiPreview1Host";
 import {
   requireDatabaseRuntimeEndpoints,
 } from "./RequiredDatabaseRuntimeEndpoints";
+import {
+  databaseAuthorizationMaximumFrameBytes,
+} from "./DatabaseAuthenticatedPrincipal";
 
 type PendingInvocation = {
   purpose: DatabaseRuntimeCallPurpose;
@@ -216,7 +219,10 @@ export class DatabaseRuntimeConnection {
     );
   }
 
-  async execute(requestBytes: Uint8Array): Promise<Uint8Array> {
+  async execute(
+    requestBytes: Uint8Array,
+    authorizationBytes: Uint8Array
+  ): Promise<Uint8Array> {
     const runtimeEndpoints = this.runtimeEndpoints();
     if (requestBytes.byteLength > this.limits.maximumRequestBytes) {
       throw new DatabaseRuntimeInvocationError(
@@ -224,30 +230,71 @@ export class DatabaseRuntimeConnection {
         "DatabaseWire request exceeds the runtime connection limit"
       );
     }
-    return this.performInvocation("request", (callID) => {
-      const payloadAddress = this.payloadOwnership.reservePayload(
-        requestBytes.byteLength
+    if (!(authorizationBytes instanceof Uint8Array)
+        || authorizationBytes.byteLength === 0
+        || authorizationBytes.byteLength > databaseAuthorizationMaximumFrameBytes) {
+      throw new DatabaseRuntimeInvocationError(
+        databaseCompletionStatus.invalidPayload,
+        "Database authorization frame is invalid"
       );
-      if (requestBytes.byteLength > 0 && payloadAddress === 0) {
+    }
+    return this.performInvocation("request", (callID) => {
+      const authorizationAddress = this.payloadOwnership.reservePayload(
+        authorizationBytes.byteLength
+      );
+      if (authorizationAddress === 0) {
         throw new DatabaseRuntimeInvocationError(
           databaseCompletionStatus.runtimeFailed,
-          "Database runtime returned a zero request payload address"
+          "Database runtime returned a zero authorization payload address"
         );
       }
+      let authorizationTransferred = false;
+      let requestAddress = 0;
+      let requestTransferred = false;
       try {
-        this.storeInvocationRequest(payloadAddress, requestBytes);
-      } catch (error) {
-        this.payloadOwnership.releaseConnectionPayload(
-          payloadAddress,
+        this.storeInvocationRequest(authorizationAddress, authorizationBytes);
+        requestAddress = this.payloadOwnership.reservePayload(
+        requestBytes.byteLength
+        );
+        if (requestBytes.byteLength > 0 && requestAddress === 0) {
+          throw new DatabaseRuntimeInvocationError(
+            databaseCompletionStatus.runtimeFailed,
+            "Database runtime returned a zero request payload address"
+          );
+        }
+        this.storeInvocationRequest(requestAddress, requestBytes);
+        this.payloadOwnership.transferPayloadToRuntime(
+          authorizationAddress,
+          authorizationBytes.byteLength
+        );
+        authorizationTransferred = true;
+        this.payloadOwnership.transferPayloadToRuntime(
+          requestAddress,
           requestBytes.byteLength
         );
+        requestTransferred = true;
+        runtimeEndpoints.invoke(
+          callID,
+          authorizationAddress,
+          authorizationBytes.byteLength,
+          requestAddress,
+          requestBytes.byteLength
+        );
+      } catch (error) {
+        if (!requestTransferred && requestAddress !== 0) {
+          this.payloadOwnership.releaseConnectionPayload(
+            requestAddress,
+            requestBytes.byteLength
+          );
+        }
+        if (!authorizationTransferred) {
+          this.payloadOwnership.releaseConnectionPayload(
+            authorizationAddress,
+            authorizationBytes.byteLength
+          );
+        }
         throw error;
       }
-      this.payloadOwnership.transferPayloadToRuntime(
-        payloadAddress,
-        requestBytes.byteLength
-      );
-      runtimeEndpoints.invoke(callID, payloadAddress, requestBytes.byteLength);
     });
   }
 

@@ -41,11 +41,15 @@ func startDatabaseRuntime(callID: UInt32) {
 @_cdecl("database_invoke")
 func invokeDatabaseRuntime(
     callID: UInt32,
+    authorizationAddress: UInt32,
+    authorizationByteCount: UInt32,
     requestAddress: UInt32,
     requestByteCount: UInt32
 ) {
     runtimeEntrypoint.invoke(
         callID: callID,
+        authorizationAddress: authorizationAddress,
+        authorizationByteCount: authorizationByteCount,
         requestAddress: requestAddress,
         requestByteCount: requestByteCount
     )

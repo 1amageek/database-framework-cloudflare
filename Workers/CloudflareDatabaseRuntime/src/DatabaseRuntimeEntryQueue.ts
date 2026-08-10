@@ -50,7 +50,11 @@ export class DatabaseRuntimeEntryQueue {
    */
   enqueueInvocation<Response>(
     requestBytes: Uint8Array,
-    operation: (ownedRequestBytes: Uint8Array) => Promise<Response> | Response
+    authorizationBytes: Uint8Array,
+    operation: (
+      ownedRequestBytes: Uint8Array,
+      ownedAuthorizationBytes: Uint8Array
+    ) => Promise<Response> | Response
   ): Promise<Response> {
     if (this.admittedInvocationCount >= this.maximumPendingInvocations) {
       return Promise.reject(
@@ -66,7 +70,8 @@ export class DatabaseRuntimeEntryQueue {
     // Queueing retains the complete backing buffer, even when the logical
     // request is a view. Account for the memory actually kept alive instead
     // of silently allowing a small subarray to bypass the aggregate limit.
-    const retainedByteCount = requestBytes.buffer.byteLength;
+    const retainedByteCount = requestBytes.buffer.byteLength
+      + authorizationBytes.buffer.byteLength;
     const nextPendingBytes = this.admittedInvocationBytes + retainedByteCount;
     if (!Number.isSafeInteger(nextPendingBytes)
         || nextPendingBytes > this.maximumPendingInvocationBytes) {
@@ -81,11 +86,12 @@ export class DatabaseRuntimeEntryQueue {
     }
 
     const ownedRequestBytes = requestBytes;
+    const ownedAuthorizationBytes = authorizationBytes;
     this.admittedInvocationCount += 1;
     this.admittedInvocationBytes = nextPendingBytes;
 
     const operationPromise = this.queueTail.then(
-      () => operation(ownedRequestBytes)
+      () => operation(ownedRequestBytes, ownedAuthorizationBytes)
     );
     const settledPromise = operationPromise.then(
       (response) => {

@@ -4,6 +4,7 @@ import {
   DatabaseInvalidContentLengthError,
   DatabasePayloadTooLargeError,
   databaseMaxRequestBytes,
+  emptyDatabaseAuthorizationClaims,
   hasDatabaseWireContentType,
   invalidContentLengthResponse,
   payloadTooLargeResponse,
@@ -25,6 +26,10 @@ export class RuntimeVerificationDurableObject
   ) {
     super(state, environment, runtimeProgram);
   }
+
+  async runScheduledWorkForVerification(): Promise<void> {
+    await this.alarm();
+  }
 }
 
 export default {
@@ -37,6 +42,14 @@ export default {
         status: 405,
         headers: { allow: "POST" },
       });
+    }
+    const identifier = environment.DATABASE.idFromName(
+      "runtime-verification"
+    );
+    const database = environment.DATABASE.get(identifier);
+    if (new URL(request.url).pathname === "/scheduled-work") {
+      await database.runScheduledWorkForVerification();
+      return new Response(null, { status: 204 });
     }
     if (!hasDatabaseWireContentType(request)) {
       return new Response("DatabaseWire requires application/octet-stream", {
@@ -66,11 +79,11 @@ export default {
       throw error;
     }
 
-    const identifier = environment.DATABASE.idFromName(
-      "runtime-verification"
-    );
-    const database = environment.DATABASE.get(identifier);
-    const responseBytes = await database.execute(requestBytes);
+    const responseBytes = await database.execute(requestBytes, {
+      identifier: "runtime-verification",
+      roles: ["admin"],
+      claims: emptyDatabaseAuthorizationClaims(),
+    });
     const responseBuffer = responseBytes.buffer;
     if (!(responseBuffer instanceof ArrayBuffer)
         || responseBytes.byteOffset !== 0

@@ -9,6 +9,13 @@ struct UnavailableCloudflareDatabaseServices:
     DatabaseJobService {
     var jobOperations: [JobOperationIdentifier] { [] }
 
+    func baseAdmission(
+        for operation: JobOperationIdentifier
+    ) throws -> DatabaseBaseAdmissionKind {
+        _ = operation
+        throw RuntimeVerificationError.unexpectedServiceOperation
+    }
+
     func execute(
         _ request: GraphAlgorithmOperation.Request,
         context: DatabaseOperationContext

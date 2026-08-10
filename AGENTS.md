@@ -23,16 +23,16 @@
 - Validate request, response, host frame, key, value, aggregate mutation, memory, startup, and execution limits before use.
 - Borrow WebAssembly memory only synchronously. Copy once into the final owner whenever data must outlive that borrow; never retain an escaped pointer.
 - Every accepted call must resolve or reject exactly once with a typed error. Do not return stale or synthetic success.
-- This is version 1. Remove the mini runtime and duplicate storage implementations after replacement tests pass.
+- The private reactor boundary is ABI v2. Authorization and DatabaseWire remain separate owned frames.
 
 ## Verification
 
 - Run the Native package tests with the pinned `org.swift.64202607231a`
   toolchain through `build-for-testing` and `test-without-building`. Inject the
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
-  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 27 passed
+  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 32 passed
   tests with zero failures, skips, expected failures, or runtime warnings.
-- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 117
+- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 121
   passed TypeScript tests with zero failures, cancellations, skips, or todos.
 - Run `scripts/verify-runtime-feasibility.sh` with the fixed
   `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. The gate
