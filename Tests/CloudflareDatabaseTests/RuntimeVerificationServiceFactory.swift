@@ -1,6 +1,6 @@
-import DatabaseServer
+import DatabaseWireRuntime
 
-final class RuntimeVerificationServiceFactory: DatabaseServerServiceFactory {
+final class RuntimeVerificationServiceFactory: DatabaseOperationServiceFactory {
     let jobService: AnyDatabaseJobService
 
     init(jobService: AnyDatabaseJobService) {
@@ -8,14 +8,14 @@ final class RuntimeVerificationServiceFactory: DatabaseServerServiceFactory {
     }
 
     func makeServices(
-        context: DatabaseServerServiceContext
-    ) async throws -> DatabaseServerServices {
+        context: DatabaseOperationServiceContext
+    ) async throws -> DatabaseOperationServices {
         let unavailable = UnavailableCloudflareDatabaseServices()
         let statementExecutor = CanonicalDatabaseStatementMutationExecutor(
             runtimeLimits: context.runtimeLimits
         )
         #if GraphIndexes
-        return DatabaseServerServices(
+        return DatabaseOperationServices(
             graphOperations: GraphOperationServices(
                 statementExecutor: statementExecutor,
                 algorithm: AnyDatabaseGraphAlgorithmService(unavailable),
@@ -28,7 +28,7 @@ final class RuntimeVerificationServiceFactory: DatabaseServerServiceFactory {
             jobService: jobService
         )
         #else
-        return DatabaseServerServices(
+        return DatabaseOperationServices(
             statementExecutor: AnyDatabaseStatementMutationExecutor(
                 statementExecutor
             ),

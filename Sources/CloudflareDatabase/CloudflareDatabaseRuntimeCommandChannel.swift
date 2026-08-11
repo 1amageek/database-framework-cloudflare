@@ -2,7 +2,7 @@ import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageHostTransport
 import CloudflareDurableObjectStorageWire
 import DatabaseKit
-import DatabaseServer
+import DatabaseWireRuntime
 import DatabaseTypes
 
 /// Schedules database runtime lifecycle commands from the synchronous boundary.
@@ -38,12 +38,14 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         StorageClient: CloudflareDurableObjectStorageClient,
         JobScheduler: DatabaseJobScheduler
     >(
-        application: AnyDatabaseServerApplication,
+        application: AnyDatabaseApplication,
         partitionIdentity: StoragePartitionIdentity,
         storageLimits: CloudflareDurableObjectLimits,
         storageLayout: CloudflareDatabaseStorageLayout,
         storageClient: StorageClient,
         jobScheduler: JobScheduler,
+        jobAuthorizationProvider:
+            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
         completion: CloudflareDatabaseCompletionChannel,
         limits: CloudflareDatabaseRuntimeLimits = .default
     ) {
@@ -54,6 +56,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
             storageLayout: storageLayout,
             storageClient: storageClient,
             jobScheduler: jobScheduler,
+            jobAuthorizationProvider: jobAuthorizationProvider,
             completion: completion,
             limits: limits
         )
@@ -85,10 +88,12 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
     }
 
     convenience init(
-        application: AnyDatabaseServerApplication,
+        application: AnyDatabaseApplication,
         partitionIdentity: StoragePartitionIdentity,
         storageLimits: CloudflareDurableObjectLimits,
         storageLayout: CloudflareDatabaseStorageLayout,
+        jobAuthorizationProvider:
+            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
         completion: CloudflareDatabaseCompletionChannel =
             CloudflareDatabaseCompletionChannel(),
         limits: CloudflareDatabaseRuntimeLimits = .default,
@@ -107,6 +112,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
                 transport: transport
             ),
             jobScheduler: CloudflareDatabaseAlarmScheduler(),
+            jobAuthorizationProvider: jobAuthorizationProvider,
             completion: completion,
             limits: limits
         )

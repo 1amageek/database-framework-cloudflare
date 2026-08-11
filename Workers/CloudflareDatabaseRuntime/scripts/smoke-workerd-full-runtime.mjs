@@ -5,8 +5,22 @@ import { copyFile, readFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
+const includesMultipleBases = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_MULTIPLE_BASES"
+);
+const includesGraphIndexes = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_GRAPH_INDEXES"
+);
+const includesVectorIndexes = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_VECTOR_INDEXES"
+);
 const requestVectorPath = fileURLToPath(
-  new URL("../../../Protocol/runtime-verification-requests-v1.json", import.meta.url)
+  new URL(
+    includesMultipleBases
+      ? "../../../Protocol/runtime-verification-requests-multiple-bases-v1.json"
+      : "../../../Protocol/runtime-verification-requests-standard-v1.json",
+    import.meta.url
+  )
 );
 const fixtureArtifactPath = fileURLToPath(
   new URL(
@@ -40,43 +54,54 @@ try {
   const schemaResponse = await execute(vectors.schemaDescribe);
   verifySuccessResponse(schemaResponse, vectors.schemaDescribe);
   assertPayloadContains(schemaResponse, "RuntimeVerificationDocument");
-  const baseCreateResponse = await execute(vectors.baseCreate);
-  verifySuccessResponse(baseCreateResponse, vectors.baseCreate);
-  await runScheduledWork();
+  let baseCreateResponse = null;
+  if (includesMultipleBases) {
+    baseCreateResponse = await execute(vectors.baseCreate);
+    verifySuccessResponse(baseCreateResponse, vectors.baseCreate);
+    await runScheduledWork();
+  }
   const mutationResponse = await execute(vectors.mutationExecute);
   verifySuccessResponse(mutationResponse, vectors.mutationExecute);
   const queryResponse = await execute(vectors.queryExecute);
   verifySuccessResponse(queryResponse, vectors.queryExecute);
   assertPayloadContains(queryResponse, "Cloudflare runtime");
-  const graphQueryResponse = await execute(vectors.queryAsk);
-  verifySuccessResponse(graphQueryResponse, vectors.queryAsk);
-  assertBooleanResponse(graphQueryResponse, true);
-  const vectorMutationResponse = await execute(vectors.vectorMutationExecute);
-  verifySuccessResponse(vectorMutationResponse, vectors.vectorMutationExecute);
-  const vectorIVFRebuildResponse = await execute(vectors.vectorIVFRebuild);
-  verifySuccessResponse(vectorIVFRebuildResponse, vectors.vectorIVFRebuild);
-  const vectorPQRebuildResponse = await execute(vectors.vectorPQRebuild);
-  verifySuccessResponse(vectorPQRebuildResponse, vectors.vectorPQRebuild);
-  const vectorIVFResponse = await execute(vectors.vectorIVFQuery);
-  verifySuccessResponse(vectorIVFResponse, vectors.vectorIVFQuery);
-  assertPayloadContains(
-    vectorIVFResponse,
-    "RuntimeVerificationIVFDocument-exact"
-  );
-  const vectorPQResponse = await execute(vectors.vectorPQQuery);
-  verifySuccessResponse(vectorPQResponse, vectors.vectorPQQuery);
-  assertPayloadContains(
-    vectorPQResponse,
-    "RuntimeVerificationPQDocument-exact"
-  );
-  const vectorFlatResponse = await execute(vectors.vectorFlatQuery);
-  verifySuccessResponse(vectorFlatResponse, vectors.vectorFlatQuery);
-  assertPayloadContains(
-    vectorFlatResponse,
-    "RuntimeVerificationFlatDocument-exact"
-  );
-  const vectorDeleteResponse = await execute(vectors.vectorDelete);
-  verifySuccessResponse(vectorDeleteResponse, vectors.vectorDelete);
+  let graphQueryResponse = null;
+  if (includesGraphIndexes) {
+    graphQueryResponse = await execute(vectors.queryAsk);
+    verifySuccessResponse(graphQueryResponse, vectors.queryAsk);
+    assertBooleanResponse(graphQueryResponse, true);
+  }
+  let vectorIVFResponse = null;
+  let vectorPQResponse = null;
+  let vectorFlatResponse = null;
+  if (includesVectorIndexes) {
+    const vectorMutationResponse = await execute(vectors.vectorMutationExecute);
+    verifySuccessResponse(vectorMutationResponse, vectors.vectorMutationExecute);
+    const vectorIVFRebuildResponse = await execute(vectors.vectorIVFRebuild);
+    verifySuccessResponse(vectorIVFRebuildResponse, vectors.vectorIVFRebuild);
+    const vectorPQRebuildResponse = await execute(vectors.vectorPQRebuild);
+    verifySuccessResponse(vectorPQRebuildResponse, vectors.vectorPQRebuild);
+    vectorIVFResponse = await execute(vectors.vectorIVFQuery);
+    verifySuccessResponse(vectorIVFResponse, vectors.vectorIVFQuery);
+    assertPayloadContains(
+      vectorIVFResponse,
+      "RuntimeVerificationIVFDocument-exact"
+    );
+    vectorPQResponse = await execute(vectors.vectorPQQuery);
+    verifySuccessResponse(vectorPQResponse, vectors.vectorPQQuery);
+    assertPayloadContains(
+      vectorPQResponse,
+      "RuntimeVerificationPQDocument-exact"
+    );
+    vectorFlatResponse = await execute(vectors.vectorFlatQuery);
+    verifySuccessResponse(vectorFlatResponse, vectors.vectorFlatQuery);
+    assertPayloadContains(
+      vectorFlatResponse,
+      "RuntimeVerificationFlatDocument-exact"
+    );
+    const vectorDeleteResponse = await execute(vectors.vectorDelete);
+    verifySuccessResponse(vectorDeleteResponse, vectors.vectorDelete);
+  }
 
   await stopWorker(worker);
   worker = null;
@@ -86,25 +111,31 @@ try {
   const persistedQueryResponse = await execute(vectors.queryExecute);
   verifySuccessResponse(persistedQueryResponse, vectors.queryExecute);
   assertPayloadContains(persistedQueryResponse, "Cloudflare runtime");
-  const persistedGraphQueryResponse = await execute(vectors.queryAsk);
-  verifySuccessResponse(persistedGraphQueryResponse, vectors.queryAsk);
-  assertBooleanResponse(persistedGraphQueryResponse, true);
+  let persistedGraphQueryResponse = null;
+  if (includesGraphIndexes) {
+    persistedGraphQueryResponse = await execute(vectors.queryAsk);
+    verifySuccessResponse(persistedGraphQueryResponse, vectors.queryAsk);
+    assertBooleanResponse(persistedGraphQueryResponse, true);
+  }
 
   console.log(JSON.stringify({
     runtimeArtifactPath,
     workerdDurableObjectRPC: true,
     sqlitePersistenceAfterRestart: true,
+    multipleBases: includesMultipleBases,
+    graphIndexes: includesGraphIndexes,
+    vectorIndexes: includesVectorIndexes,
     capabilitiesResponseBytes: capabilitiesResponse.byteLength,
     schemaResponseBytes: schemaResponse.byteLength,
-    baseCreateResponseBytes: baseCreateResponse.byteLength,
+    baseCreateResponseBytes: baseCreateResponse?.byteLength ?? null,
     mutationResponseBytes: mutationResponse.byteLength,
     queryResponseBytes: queryResponse.byteLength,
-    graphQueryResponseBytes: graphQueryResponse.byteLength,
-    vectorIVFResponseBytes: vectorIVFResponse.byteLength,
-    vectorPQResponseBytes: vectorPQResponse.byteLength,
-    vectorFlatResponseBytes: vectorFlatResponse.byteLength,
+    graphQueryResponseBytes: graphQueryResponse?.byteLength ?? null,
+    vectorIVFResponseBytes: vectorIVFResponse?.byteLength ?? null,
+    vectorPQResponseBytes: vectorPQResponse?.byteLength ?? null,
+    vectorFlatResponseBytes: vectorFlatResponse?.byteLength ?? null,
     persistedGraphQueryResponseBytes:
-      persistedGraphQueryResponse.byteLength,
+      persistedGraphQueryResponse?.byteLength ?? null,
   }, null, 2));
 } finally {
   if (worker !== null) {
@@ -112,6 +143,17 @@ try {
   }
   await rm(statePath, { recursive: true, force: true });
   await rm(fixtureArtifactPath, { force: true });
+}
+
+function readRequiredFeatureFlag(name) {
+  const value = process.env[name];
+  if (value === "1") {
+    return true;
+  }
+  if (value === "0") {
+    return false;
+  }
+  throw new Error(`${name} must be either 0 or 1`);
 }
 
 function startWorker() {
@@ -280,16 +322,39 @@ function assertBooleanResponse(response, expectedValue) {
 
 async function stopWorker(child) {
   if (child.exitCode !== null || child.signalCode !== null) {
+    await waitForWorkerStopped();
     return;
   }
-  child.stdin.write("x");
   const exit = once(child, "exit");
-  const forcedStop = delay(5_000).then(() => {
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill("SIGTERM");
+  child.stdin.end("x");
+  if (!await waitForProcessExit(exit, 5_000)) {
+    child.kill("SIGTERM");
+    if (!await waitForProcessExit(exit, 5_000)) {
+      child.kill("SIGKILL");
+      await exit;
     }
-  });
-  await Promise.race([exit, forcedStop]);
+  }
+  await waitForWorkerStopped();
+}
+
+async function waitForProcessExit(exit, timeoutMilliseconds) {
+  return Promise.race([
+    exit.then(() => true),
+    delay(timeoutMilliseconds).then(() => false),
+  ]);
+}
+
+async function waitForWorkerStopped() {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      await fetch(endpoint, { signal: AbortSignal.timeout(500) });
+    } catch {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error("Worker endpoint remained reachable after process exit");
 }
 
 function delay(milliseconds) {

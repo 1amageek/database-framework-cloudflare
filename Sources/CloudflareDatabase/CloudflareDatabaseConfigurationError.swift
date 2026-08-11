@@ -14,8 +14,10 @@ public enum CloudflareDatabaseConfigurationError:
     /// A Cloudflare storage namespace path is empty or has an empty component.
     case invalidStorageNamespacePath
 
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     /// A Cloudflare Base placement path is empty or has an empty component.
     case invalidBasePlacementPath
+    #endif
 
     public var description: String {
         switch self {
@@ -25,8 +27,10 @@ public enum CloudflareDatabaseConfigurationError:
             return "Cloudflare hosting does not support HNSW for vector index '\(indexName)'"
         case .invalidStorageNamespacePath:
             return "Cloudflare storage namespace path must contain only non-empty components"
+        #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
         case .invalidBasePlacementPath:
             return "Cloudflare Base placement path must contain only non-empty components"
+        #endif
         }
     }
 }

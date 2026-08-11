@@ -76,6 +76,9 @@ var databaseRuntimeTraits = Set(
     }
 )
 databaseRuntimeTraits.insert(
+    .trait(name: "MultipleBases")
+)
+databaseRuntimeTraits.insert(
     .trait(
         name: "AllRuntimeFeatures",
         enabledTraits: databaseRuntimeFeatureNames
@@ -92,7 +95,12 @@ let databaseFrameworkDependencyTraits = Set(
             condition: .when(traits: [$0])
         )
     }
-)
+).union([
+    .trait(
+        name: "MultipleBases",
+        condition: .when(traits: ["MultipleBases"])
+    ),
+])
 
 let package = Package(
     name: "database-framework-cloudflare",
@@ -111,12 +119,12 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0809.3",
+            from: "26.0812.0",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0809.8"
+            from: "26.0811.0"
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
@@ -129,7 +137,12 @@ let package = Package(
             dependencies: [
                 "CloudflareDatabaseTaskScheduling",
                 .product(name: "DatabaseEngine", package: "database-framework"),
-                .product(name: "DatabaseServer", package: "database-framework"),
+                .product(name: "DatabaseWireRuntime", package: "database-framework"),
+                .product(
+                    name: "DatabaseFoundation",
+                    package: "database-framework",
+                    condition: .when(platforms: hostPlatforms)
+                ),
                 .product(name: "DatabaseWire", package: "database-kit"),
                 .product(
                     name: "VectorIndex",
@@ -148,6 +161,10 @@ let package = Package(
                     "CLOUDFLARE_DATABASE_VECTOR_INDEXES",
                     .when(traits: ["VectorIndexes"])
                 ),
+                .define(
+                    "CLOUDFLARE_DATABASE_MULTIPLE_BASES",
+                    .when(traits: ["MultipleBases"])
+                ),
             ]
         ),
         .target(
@@ -160,14 +177,14 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
-                .product(name: "DatabaseServer", package: "database-framework"),
+                .product(name: "DatabaseWireRuntime", package: "database-framework"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
                     condition: .when(traits: ["VectorIndexes"])
                 ),
                 .product(
-                    name: "DatabaseServerFoundation",
+                    name: "DatabaseFoundation",
                     package: "database-framework",
                     condition: .when(platforms: hostPlatforms)
                 ),
@@ -187,6 +204,10 @@ let package = Package(
                 .define(
                     "CLOUDFLARE_RUNTIME_VECTOR_INDEXES",
                     .when(traits: ["VectorIndexes"])
+                ),
+                .define(
+                    "CLOUDFLARE_RUNTIME_MULTIPLE_BASES",
+                    .when(traits: ["MultipleBases"])
                 ),
             ],
             linkerSettings: unicodeDataSupportLinkerSettings + [
@@ -213,14 +234,14 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
-                .product(name: "DatabaseServer", package: "database-framework"),
+                .product(name: "DatabaseWireRuntime", package: "database-framework"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
                     condition: .when(traits: ["VectorIndexes"])
                 ),
                 .product(
-                    name: "DatabaseServerFoundation",
+                    name: "DatabaseFoundation",
                     package: "database-framework",
                     condition: .when(platforms: hostPlatforms)
                 ),
@@ -243,6 +264,10 @@ let package = Package(
                 .define(
                     "CLOUDFLARE_TEST_VECTOR_INDEXES",
                     .when(traits: ["VectorIndexes"])
+                ),
+                .define(
+                    "CLOUDFLARE_TEST_MULTIPLE_BASES",
+                    .when(traits: ["MultipleBases"])
                 ),
             ]
         ),

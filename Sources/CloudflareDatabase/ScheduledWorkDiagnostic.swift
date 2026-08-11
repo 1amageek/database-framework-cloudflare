@@ -1,4 +1,4 @@
-import DatabaseServer
+import DatabaseWireRuntime
 import StorageKit
 
 enum ScheduledWorkDiagnostic {
@@ -78,10 +78,10 @@ enum ScheduledWorkDiagnostic {
         switch error {
         case .invalidConfiguration:
             return "job.invalid_configuration"
-        case .invalidRetryPolicy:
-            return "job.invalid_retry_policy"
         case .invalidTarget:
             return "job.invalid_target"
+        case .invalidRetryPolicy:
+            return "job.invalid_retry_policy"
         case .requestPayloadTooLarge:
             return "job.request_payload_too_large"
         case .specificationTooLarge:

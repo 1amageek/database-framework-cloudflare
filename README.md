@@ -3,7 +3,7 @@
 Cloudflare deployment support for the full
 [`database-framework`](https://github.com/1amageek/database-framework) runtime.
 
-An application compiles its schema, migrations, indexes, commands, and server
+An application compiles its schema, migrations, indexes, commands, and operation
 services into a Swift 6.4 Embedded WASM reactor. A Durable Object owns one persistent
 runtime instance and one SQLite database. TypeScript provides scheduling,
 bounded byte transfer, and platform services; database semantics remain in
@@ -16,8 +16,8 @@ flowchart LR
   RPC --> DO["CloudflareDatabaseDurableObject"]
   DO --> Connection["DatabaseRuntimeConnection"]
   Connection --> Runtime["Application database runtime"]
-  Runtime --> Server["Full DatabaseServerRuntime"]
-  Server --> Storage["StorageKit engine"]
+  Runtime --> Operations["DatabaseOperationRuntime<br/>host-independent execution"]
+  Operations --> Storage["StorageKit engine"]
   Storage --> SQLite["Durable Object SQLite"]
 ```
 
@@ -27,7 +27,7 @@ flowchart LR
 |---|---|
 | `database-types` | Foundation-independent primitive values and immutable byte ownership |
 | `database-kit` | Schema, QueryIR, Base/Security semantics, and canonical DatabaseWire |
-| `database-framework` | DBContainer, graph and SPARQL execution, relationships, ontology, SHACL, indexes, and server services |
+| `database-framework` | DBContainer, graph and SPARQL execution, relationships, ontology, SHACL, indexes, and DatabaseWire operation execution |
 | `storage-kit` | Durable Object storage client, storage transport contract, and SQLite adapter |
 | `database-framework-cloudflare` Swift | Application composition, full runtime lifecycle, zero-copy request ownership, scheduling, and completion |
 | `database-framework-cloudflare` TypeScript | Durable Object RPC, FIFO admission, runtime services, resource limits, and terminal failure handling |
@@ -36,16 +36,22 @@ DatabaseWire and the StorageKit transport remain separate protocols. TypeScript
 does not parse DatabaseWire operations or implement queries, schemas, indexes,
 or transactions.
 
+Cloudflare does not depend on the native `database-server` package. Both hosts
+consume the optional, host-independent `DatabaseWireRuntime` product from
+`database-framework`; native listeners and credentials remain outside the
+Embedded WASM graph.
+
 ## Swift product
 
 The package exports one library product, `CloudflareDatabase`.
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseApplication` | Supplies the application storage identity, single-domain layout, unopened container definition, and server configuration |
-| `CloudflareDatabaseStorageLayout` | Names the Cloudflare data domain and Base placement consumed by DatabaseFramework |
+| `CloudflareDatabaseApplication` | Supplies the application storage identity, single-domain layout, unopened container definition, and operation-runtime configuration |
+| `CloudflareDatabaseStorageLayout` | Names the Cloudflare data domain and, with `MultipleBases`, its Base placement root |
 | `CloudflareDatabaseAuthorizationCodec` | Carries an already authenticated principal across the private host/reactor boundary |
-| `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through the full server runtime |
+| `CloudflareDatabaseJobAuthorizationProviding` | Maps authenticated requests to opaque job references and revalidates current authority for every durable job slice |
+| `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through one operation runtime |
 | `CloudflareDatabaseRuntimeCommandChannel` | Submits synchronous boundary commands to the actor-owned runtime |
 | `CloudflareDatabaseRuntimeEntrypoint` | Owns one application runtime and implements operations called by the application's fixed exports |
 | `DatabaseInvocationPayloadOwnership` | Transfers request payload ownership into immutable `ByteString` owners without rematerializing the frame |
@@ -58,10 +64,18 @@ runtime artifact: application schema and command registration are compile-time
 dependencies.
 
 Applications pass their schema and migration plan in the unopened container
-definition and declare the one physical Cloudflare domain plus the placement
-under which DatabaseFramework creates Base roots. The host adapter never
-interprets a Base, Composition, or Grant. Base provisioning and its schema
-migration run through the canonical persistent Base lifecycle job:
+definition and declare the one physical Cloudflare domain. The host adapter
+never interprets a Base, Composition, or Grant:
+
+```swift
+let storageLayout = try CloudflareDatabaseStorageLayout(
+    domainID: DatabaseStorageDomain.ID("primary"),
+    domainNamespacePath: ["database", "calendar"]
+)
+```
+
+The non-default `MultipleBases` trait adds the placement under which
+DatabaseFramework creates Base roots:
 
 ```swift
 let storageLayout = try CloudflareDatabaseStorageLayout(
@@ -70,7 +84,11 @@ let storageLayout = try CloudflareDatabaseStorageLayout(
     placementID: Base.Placement.ID("default"),
     baseNamespacePath: ["bases"]
 )
+```
 
+Both layouts use the same unopened container definition:
+
+```swift
 func makeContainerDefinition() async throws
     -> DatabaseContainerDefinition {
     DatabaseContainerDefinition(
@@ -86,8 +104,9 @@ func makeContainerDefinition() async throws
 
 The initializer without `migrationPlan` remains the explicit choice for an
 unversioned schema. The runtime creates exactly one `DatabaseStorageTopology`
-from `storageLayout`; DatabaseFramework owns its control catalog, Base grants,
-and Base roots. Cloudflare remains one physical transaction domain. A
+from `storageLayout`; DatabaseFramework owns its database Grant and data root.
+With `MultipleBases`, it additionally owns the Base catalog, Base Grants, and
+Base roots. Cloudflare remains one physical transaction domain. A
 multi-domain Composition belongs to a native server topology.
 
 ## Runtime feature traits
@@ -110,9 +129,11 @@ forwards only the selected traits to that dependency.
 | `AggregationIndexes` | Aggregation indexes |
 | `LeaderboardIndexes` | Leaderboard indexes |
 | `Relationships` | Relationship indexes |
+| `MultipleBases` | Base lifecycle, Base-local Grants, and Composition execution |
 
 `AllRuntimeFeatures` enables every feature and remains the package default for
-general development. An application-specific reactor disables default traits
+general development, but does not enable `MultipleBases`. An
+application-specific reactor disables default traits
 and selects only its compiled schema and query requirements. Storage backend
 selection is not a runtime feature trait here: every Cloudflare reactor uses
 the StorageKit Durable Object adapter.
@@ -191,6 +212,25 @@ DatabaseWire `FieldObject` claim bytes. Raw credentials never enter the
 reactor. Public administration endpoints, credential validation, and
 storage-partition routing belong to the application Worker, not this package.
 
+Persistent jobs require an application-owned
+`CloudflareDatabaseJobAuthorizationProviding`. A job stores only the provider's
+opaque reference. Every alarm slice calls `revalidate` to obtain current roles,
+claims, and revocation state before executing productive work. Without a
+provider, persistent job operations are not advertised; they never reuse a
+principal snapshot from the request that created the job.
+
+Applications that do not expose persistent jobs state that contract explicitly:
+
+```swift
+let jobAuthorizationProvider:
+    AnyCloudflareDatabaseJobAuthorizationProvider? = nil
+```
+
+Applications that expose persistent jobs wrap their authentication authority
+in `AnyCloudflareDatabaseJobAuthorizationProvider`. The provider stores no
+credential in the reactor and must resolve its opaque reference against the
+application's current authentication state.
+
 ## Runtime flow
 
 ```mermaid
@@ -198,13 +238,14 @@ sequenceDiagram
   participant App as Application Worker
   participant DO as Database Durable Object
   participant Runtime as Swift runtime
-  participant Server as DatabaseServerRuntime
+  participant Server as DatabaseOperationRuntime
   participant SQLite as DO SQLite
 
   App->>App: authenticate external credential
   App->>DO: execute(DatabaseWire bytes, principal)
   DO->>DO: bounded FIFO admission
   DO->>Runtime: invoke(call ID, owned auth frame, owned request)
+  Runtime->>Runtime: derive opaque job authorization reference
   Runtime->>Server: execute DatabaseWire with AuthorizationContext
   Server->>Runtime: StorageKit request view
   Runtime->>DO: storage service call
@@ -240,10 +281,11 @@ the runtime path.
    `blockConcurrencyWhile`.
 2. Startup validates host capabilities before opening `DBContainer`, installs
    the single-domain topology, and completes only after StorageKit and the full
-   `DatabaseServerRuntime` are ready. Base creation and migration remain
-   explicit persistent operations. The verification application creates one
-   Base, then executes Flat, IVF, and PQ write/index/query/delete checks when
-   `VectorIndexes` is selected; HNSW has a separate bootstrap-rejection check.
+   `DatabaseOperationRuntime` are ready. The standard fixture operates on the
+   database data root. The `MultipleBases` fixture creates one Base through its
+   persistent lifecycle job before data operations. Both fixtures execute Flat,
+   IVF, and PQ write/index/query/delete checks when `VectorIndexes` is selected;
+   HNSW has a separate bootstrap-rejection check.
 3. Invocations and alarms use one FIFO queue, and Swift prevents concurrent
    runtime entry as a second invariant.
 4. Timeout, invalid completion, host scheduler failure, clock failure, or
@@ -317,17 +359,24 @@ coherent feature closure without treating link presence as execution support:
 sh scripts/verify-runtime-feasibility.sh
 ```
 
-Latest verified `AllRuntimeFeatures` result with the 2026-07-23 Swift 6.4
-snapshot:
+Latest verified results with the 2026-07-23 Swift 6.4 snapshot:
 
-| Measurement | Result |
-| --- | ---: |
-| Optimized reactor | 10,024,335 bytes |
-| Gzip-compressed reactor | 3,510,573 bytes |
-| WebAssembly address space | 67,108,864 bytes |
-| Startup | 32.457 ms |
-| workerd Durable Object RPC | Passed |
-| SQLite persistence after restart | Passed |
+| Measurement | `GraphIndexes` | `AllRuntimeFeatures` | `AllRuntimeFeatures,MultipleBases` |
+| --- | ---: | ---: | ---: |
+| Optimized reactor | 7,854,796 bytes | 9,292,168 bytes | 10,183,059 bytes |
+| Gzip-compressed reactor | 2,766,727 bytes | 3,249,509 bytes | 3,566,916 bytes |
+| WebAssembly address space | 67,108,864 bytes | 67,108,864 bytes | 67,108,864 bytes |
+| Startup | 26.209 ms | 64.470 ms | 36.843 ms |
+| workerd Durable Object RPC | Passed | Passed | Passed |
+| SQLite persistence after restart | Passed | Passed | Passed |
+| Process stop and negative readiness | Passed | Passed | Passed |
+
+The optional `MultipleBases` composition adds 890,891 raw bytes and 317,407
+gzip bytes to this full-feature verification artifact. The standard artifact
+does not link the Base runtime implementation. The `GraphIndexes` fixture is
+1,437,372 raw bytes smaller than the full-feature standard fixture and proves
+that unselected index products, including `VectorIndex` and `SwiftHNSW`, are
+absent from the link inputs.
 
 The same fixture executes Flat, IVF, and PQ and rejects HNSW before storage
 engine creation. Native package verification passes all 32 Cloudflare tests,

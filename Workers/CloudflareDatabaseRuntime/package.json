@@ -19,6 +19,10 @@
     "./execution-failure": {
       "types": "./src/DatabaseExecutionFailure.ts",
       "import": "./src/DatabaseExecutionFailure.ts"
+    },
+    "./authorization": {
+      "types": "./src/DatabaseAuthenticatedPrincipal.ts",
+      "import": "./src/DatabaseAuthenticatedPrincipal.ts"
     }
   },
   "scripts": {

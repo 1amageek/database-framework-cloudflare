@@ -2,16 +2,18 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseKit
-import DatabaseServer
+import DatabaseWireRuntime
 import DatabaseTypes
 import Synchronization
 
 /// Application-facing owner of one persistent database runtime instance.
 public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
-    private let application: AnyDatabaseServerApplication
+    private let application: AnyDatabaseApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
     private let storageLayout: CloudflareDatabaseStorageLayout
+    private let jobAuthorizationProvider:
+        AnyCloudflareDatabaseJobAuthorizationProvider?
     private let completion: CloudflareDatabaseCompletionChannel
     private let limits: CloudflareDatabaseRuntimeLimits
     private let storageTransportLimits: CloudflareDatabaseStorageTransportLimits
@@ -63,10 +65,11 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             maximumStorageResponseBytes,
             field: "maximumStorageResponseBytes"
         )
-        self.application = AnyDatabaseServerApplication(application)
+        self.application = AnyDatabaseApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
         self.storageLayout = application.storageLayout
+        self.jobAuthorizationProvider = application.jobAuthorizationProvider
         self.completion = completion
         self.limits = CloudflareDatabaseRuntimeLimits(
             maximumRequestBytes: maximumRequestBytes,
@@ -133,6 +136,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
                     partitionIdentity: partitionIdentity,
                     storageLimits: storageLimits,
                     storageLayout: storageLayout,
+                    jobAuthorizationProvider: jobAuthorizationProvider,
                     completion: completion,
                     limits: limits,
                     storageTransportLimits: storageTransportLimits

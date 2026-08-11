@@ -137,10 +137,15 @@ struct CloudflareDatabaseRuntimeTests {
     @Test("full runtime describes schema and persists canonical entities")
     func executesSchemaMutationAndQueryOperations() async throws {
         let completion = RecordingCloudflareDatabaseCompletion()
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        let application = try RuntimeVerificationApplication(
+            persistentJobs: ()
+        )
+        #else
+        let application = try RuntimeVerificationApplication()
+        #endif
         let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(
-                persistentJobs: ()
-            ),
+            application: application,
             storageClient: InMemoryCloudflareDurableObjectStorageClient(),
             jobScheduler: DiscardingDatabaseJobScheduler(),
             completion: CloudflareDatabaseCompletionChannel(
@@ -150,6 +155,7 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.start(callID: 60)
         #expect(completion.completion(callID: 60)?.status == .success)
 
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         let baseID = try Base.ID("runtime-verification")
         let create = try await invoke(
             DatabaseOperations.baseExecute,
@@ -183,6 +189,10 @@ struct CloudflareDatabaseRuntimeTests {
         }
         await runtime.alarm(callID: 601)
         #expect(completion.completion(callID: 601)?.status == .success)
+        let dataTarget = DatabaseOperationTarget.base(baseID)
+        #else
+        let dataTarget = DatabaseOperationTarget.database
+        #endif
 
         let schema = try await invoke(
             DatabaseOperations.schemaDescribe,
@@ -206,7 +216,7 @@ struct CloudflareDatabaseRuntimeTests {
         )
         let mutation = try await invoke(
             DatabaseOperations.mutationExecute,
-            target: .base(baseID),
+            target: dataTarget,
             request: MutationExecuteOperation.Request(
                 input: .entities([
                     MutationExecuteOperation.Change(
@@ -236,7 +246,7 @@ struct CloudflareDatabaseRuntimeTests {
 
         let query = try await invoke(
             DatabaseOperations.queryExecute,
-            target: .base(baseID),
+            target: dataTarget,
             request: QueryExecuteOperation.Request(
                 input: .text(
                     language: .sql,
@@ -261,8 +271,27 @@ struct CloudflareDatabaseRuntimeTests {
         #expect(rows[0].values[titleColumnIndex] == .string("Cloudflare runtime"))
     }
 
-    @Test("startup failures can be retried and successful startup is single-use")
+    @Test("startup failures are redacted, retryable, and successful startup is single-use")
     func retriesStartupFailure() async throws {
+        let redactionCompletion = RecordingCloudflareDatabaseCompletion()
+        let redactionRuntime = CloudflareDatabaseRuntime(
+            application: try InternalErrorRuntimeVerificationApplication(),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            jobScheduler: DiscardingDatabaseJobScheduler(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: redactionCompletion
+            )
+        )
+        await redactionRuntime.start(callID: 9)
+        let redactedFailure = try #require(
+            redactionCompletion.completion(callID: 9)
+        )
+        #expect(redactedFailure.status == .startupFailed)
+        #expect(
+            string(from: redactedFailure.payload)
+                == "Database runtime startup failed"
+        )
+
         let completion = RecordingCloudflareDatabaseCompletion()
         let runtime = CloudflareDatabaseRuntime(
             application: try RuntimeVerificationApplication(),

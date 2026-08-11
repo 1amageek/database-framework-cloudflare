@@ -13,15 +13,38 @@ struct RuntimeVerificationRequestVectorTests {
         let repositoryDirectory = testDirectory
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let vectorURL = repositoryDirectory.appending(
-            path: "Protocol/runtime-verification-requests-v1.json"
+        try verifyVectors(
+            at: repositoryDirectory.appending(
+                path: "Protocol/runtime-verification-requests-standard-v1.json"
+            ),
+            expected: expectedRequests(
+                target: .database,
+                includesBaseCreate: false
+            )
         )
+        let baseID = try Base.ID("runtime-verification")
+        try verifyVectors(
+            at: repositoryDirectory.appending(
+                path:
+                    "Protocol/runtime-verification-requests-multiple-bases-v1.json"
+            ),
+            expected: expectedRequests(
+                target: .base(baseID),
+                includesBaseCreate: true
+            )
+        )
+    }
+
+    private func expectedRequests(
+        target: DatabaseOperationTarget,
+        includesBaseCreate: Bool
+    ) throws -> [(String, ByteString)] {
         let identity = try EntityReference(
             entity: RuntimeVerificationDocument.persistableType,
             id: .string("document-1")
         )
         let baseID = try Base.ID("runtime-verification")
-        let expected: [(String, ByteString)] = [
+        var expected: [(String, ByteString)] = [
             (
                 "capabilitiesDescribe",
                 try DatabaseWireEncoder().encodeRequest(
@@ -42,40 +65,46 @@ struct RuntimeVerificationRequestVectorTests {
                     request: EmptyOperationPayload()
                 )
             ),
-            (
-                "baseCreate",
-                try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.baseExecute,
-                    requestID: 65,
-                    target: .database,
-                    metadata: OperationRequestMetadata(
-                        idempotencyKey: "runtime-verification-base"
-                    ),
-                    request: BaseExecuteOperation.Request(
-                        invocation: .create(
-                            baseID: baseID,
-                            placementID: try Base.Placement.ID("default"),
-                            initialGrants: [
-                                Security.Grant(
-                                    subject: .principal(
-                                        "runtime-verification"
-                                    ),
-                                    resource: .base(baseID),
-                                    access: .all
-                                )
-                            ],
-                            expectedRevision: 0,
+        ]
+        if includesBaseCreate {
+            expected.append(
+                (
+                    "baseCreate",
+                    try DatabaseWireEncoder().encodeRequest(
+                        DatabaseOperations.baseExecute,
+                        requestID: 65,
+                        target: .database,
+                        metadata: OperationRequestMetadata(
                             idempotencyKey: "runtime-verification-base"
+                        ),
+                        request: BaseExecuteOperation.Request(
+                            invocation: .create(
+                                baseID: baseID,
+                                placementID: try Base.Placement.ID("default"),
+                                initialGrants: [
+                                    Security.Grant(
+                                        subject: .principal(
+                                            "runtime-verification"
+                                        ),
+                                        resource: .base(baseID),
+                                        access: .all
+                                    ),
+                                ],
+                                expectedRevision: 0,
+                                idempotencyKey: "runtime-verification-base"
+                            )
                         )
                     )
                 )
-            ),
+            )
+        }
+        expected.append(contentsOf: [
             (
                 "mutationExecute",
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.mutationExecute,
                     requestID: 62,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(
                         idempotencyKey: "runtime-document-1"
                     ),
@@ -104,7 +133,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.queryExecute,
                     requestID: 63,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(),
                     request: QueryExecuteOperation.Request(
                         input: .text(
@@ -120,7 +149,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.queryExecute,
                     requestID: 64,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(),
                     request: QueryExecuteOperation.Request(
                         input: .text(
@@ -137,7 +166,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.mutationExecute,
                     requestID: 66,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(
                         idempotencyKey: "runtime-vectors-insert"
                     ),
@@ -151,7 +180,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.maintenanceExecute,
                     requestID: 67,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(
                         idempotencyKey: "runtime-ivf-rebuild"
                     ),
@@ -166,7 +195,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.maintenanceExecute,
                     requestID: 68,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(
                         idempotencyKey: "runtime-pq-rebuild"
                     ),
@@ -181,7 +210,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.queryExecute,
                     requestID: 69,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(),
                     request: try vectorQueryRequest(
                         entity: "RuntimeVerificationIVFDocument",
@@ -194,7 +223,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.queryExecute,
                     requestID: 70,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(),
                     request: try vectorQueryRequest(
                         entity: "RuntimeVerificationPQDocument",
@@ -207,7 +236,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.queryExecute,
                     requestID: 71,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(),
                     request: try vectorQueryRequest(
                         entity: "RuntimeVerificationFlatDocument",
@@ -220,7 +249,7 @@ struct RuntimeVerificationRequestVectorTests {
                 try DatabaseWireEncoder().encodeRequest(
                     DatabaseOperations.mutationExecute,
                     requestID: 72,
-                    target: .base(baseID),
+                    target: target,
                     metadata: OperationRequestMetadata(
                         idempotencyKey: "runtime-vectors-delete"
                     ),
@@ -229,8 +258,14 @@ struct RuntimeVerificationRequestVectorTests {
                     )
                 )
             ),
-        ]
+        ])
+        return expected
+    }
 
+    private func verifyVectors(
+        at vectorURL: URL,
+        expected: [(String, ByteString)]
+    ) throws {
         let data = try Data(contentsOf: vectorURL)
         let vectors = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: [Int]]

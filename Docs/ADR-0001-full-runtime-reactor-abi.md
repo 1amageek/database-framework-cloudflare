@@ -17,7 +17,7 @@ does not interpret database operations, schemas, queries, indexes, jobs, or
 transactions.
 
 The reactor is a full runtime because database semantics execute through
-`DBContainer`, `DatabaseRuntime`, and `DatabaseServerRuntime`; it does not mean
+`DBContainer`, `DatabaseRuntime`, and `DatabaseOperationRuntime`; it does not mean
 that every optional index implementation must be linked into every
 application. SwiftPM traits define the application feature closure at compile
 time. `GraphIndexes` also selects `ScalarIndexes`, which graph storage requires.
@@ -37,7 +37,7 @@ contract are recorded in
 |---|---|---|
 | `database_alloc` | `(u32) -> u32` | Allocate runtime address space |
 | `database_dealloc` | `(u32, u32) -> void` | Release a runtime allocation |
-| `database_start` | `(u32) -> void` | Bootstrap storage topology, container, and server runtime |
+| `database_start` | `(u32) -> void` | Bootstrap storage topology, container, and operation runtime |
 | `database_invoke` | `(u32, u32, u32, u32, u32) -> void` | Consume an authorization frame and DatabaseWire request, then enqueue one authenticated invocation |
 | `database_alarm` | `(u32) -> void` | Run one bounded persistent-job wake-up from a Durable Object alarm |
 | `database_executor_run` | `(u32) -> void` | Run one scheduled Swift task |
@@ -90,6 +90,12 @@ ordering, duplicate roles, trailing bytes, malformed claims, and the exact
 frame version are validated before `AuthorizationContext` is constructed.
 Raw bearer tokens, session cookies, and authentication secrets do not cross
 this ABI.
+
+Persistent jobs do not persist this principal snapshot. An application-owned
+`CloudflareDatabaseJobAuthorizationProviding` derives an opaque authentication
+record reference during invocation and resolves current principal, roles,
+claims, and revocation state before every productive alarm slice. Without that
+provider, persistent job operations are not advertised.
 
 ## Completion statuses
 
@@ -157,8 +163,9 @@ aggregate memory limit.
 1. The Durable Object migrates its SQLite host schema and instantiates the
    reactor inside constructor-time `blockConcurrencyWhile`.
 2. `database_start` completes only after the single Cloudflare storage topology,
-   container, and full server runtime are ready. Base creation and Base-local
-   schema migration remain explicit persistent operations.
+   container, and full operation runtime are ready. With `MultipleBases`, Base
+   creation and Base-local schema migration remain explicit persistent
+   operations.
 3. Database invocations and alarms enter one explicit FIFO queue. The Swift
    runtime also serializes both entry types as a defense-in-depth invariant.
 4. A completion timeout makes the runtime generation unusable. The Durable Object
@@ -179,11 +186,12 @@ aggregate memory limit.
 The release gate executes the same optimized reactor in Node and workerd. The
 workerd path must cross Worker routing, Durable Object RPC, the FIFO runtime
 owner, the authenticated ABI, the synchronous StorageKit host ABI, and Durable
-Object SQLite. It first creates and provisions a Base, then executes a
-DatabaseWire mutation for an OWL-class entity and verifies the
-generated RDF projection through a SPARQL ASK request. After restarting workerd
-with the same persisted state, both the document query and SPARQL ASK request
-must observe the prior mutation. When `VectorIndexes` is selected, startup
+Object SQLite. The standard fixture executes against the database data root;
+the `MultipleBases` fixture first creates and provisions a Base and executes
+against that Base. Both fixtures issue a DatabaseWire mutation for an OWL-class
+entity and verify the generated RDF projection through a SPARQL ASK request.
+After restarting workerd with the same persisted state, both the document query
+and SPARQL ASK request must observe the prior mutation. When `VectorIndexes` is selected, startup
 exercises Flat, IVF, and PQ through their actual write, maintenance, query, and
 delete paths. A separate negative fixture proves that HNSW fails at bootstrap
 before container opening. The gate requires `VectorIndex.o` and `SwiftHNSW.o`

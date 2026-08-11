@@ -1,4 +1,4 @@
-import DatabaseServer
+import DatabaseWireRuntime
 import DatabaseWire
 
 actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {

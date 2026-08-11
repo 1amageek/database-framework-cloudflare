@@ -4,8 +4,8 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
-import DatabaseServer
-import DatabaseServerFoundation
+import DatabaseWireRuntime
+import DatabaseFoundation
 import StorageKitSystemClock
 
 final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
@@ -17,18 +17,18 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let storageLayout: CloudflareDatabaseStorageLayout
+    let jobAuthorizationProvider:
+        AnyCloudflareDatabaseJobAuthorizationProvider?
     private let jobServiceSelection: JobServiceSelection
 
     init() throws {
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
-        storageLayout = try CloudflareDatabaseStorageLayout(
-            domainID: DatabaseStorageDomain.ID("primary"),
-            domainNamespacePath: ["database", "runtime-verification"],
-            placementID: Base.Placement.ID("default"),
-            baseNamespacePath: ["bases"]
+        storageLayout = try makeCloudflareTestStorageLayout(
+            namespace: "runtime-verification"
         )
+        self.jobAuthorizationProvider = nil
         self.jobServiceSelection = .injected(
             AnyDatabaseJobService(
                 UnavailableCloudflareDatabaseServices()
@@ -41,12 +41,13 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
-        storageLayout = try CloudflareDatabaseStorageLayout(
-            domainID: DatabaseStorageDomain.ID("primary"),
-            domainNamespacePath: ["database", "runtime-verification"],
-            placementID: Base.Placement.ID("default"),
-            baseNamespacePath: ["bases"]
+        storageLayout = try makeCloudflareTestStorageLayout(
+            namespace: "runtime-verification"
         )
+        self.jobAuthorizationProvider =
+            AnyCloudflareDatabaseJobAuthorizationProvider(
+                RuntimeVerificationJobAuthorizationProvider()
+            )
         self.jobServiceSelection = .persistent
     }
 
@@ -54,12 +55,10 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
-        storageLayout = try CloudflareDatabaseStorageLayout(
-            domainID: DatabaseStorageDomain.ID("primary"),
-            domainNamespacePath: ["database", "runtime-verification"],
-            placementID: Base.Placement.ID("default"),
-            baseNamespacePath: ["bases"]
+        storageLayout = try makeCloudflareTestStorageLayout(
+            namespace: "runtime-verification"
         )
+        self.jobAuthorizationProvider = nil
         self.jobServiceSelection = .injected(
             AnyDatabaseJobService(jobService)
         )
@@ -90,12 +89,12 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
 
     func makeRuntimeConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseServerRuntimeConfiguration {
+    ) async throws -> DatabaseOperationRuntimeConfiguration {
         _ = container
-        let serviceFactory: AnyDatabaseServerServiceFactory
+        let serviceFactory: AnyDatabaseOperationServiceFactory
         switch jobServiceSelection {
         case .injected(let jobService):
-            serviceFactory = AnyDatabaseServerServiceFactory { context in
+            serviceFactory = AnyDatabaseOperationServiceFactory { context in
                 try await RuntimeVerificationServiceFactory(
                     jobService: jobService
                 ).makeServices(context: context)
@@ -109,8 +108,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                     maximumStorageValueBytes: 1_048_576
                 )
             )
-            serviceFactory = AnyDatabaseServerServiceFactory(
-                CanonicalDatabaseServerServiceFactory(
+            serviceFactory = AnyDatabaseOperationServiceFactory(
+                CanonicalDatabaseOperationServiceFactory(
                     maintenanceServiceFactory:
                         DatabaseMaintenanceOperationServiceFactory(
                             identifierGenerator: identifierGenerator
@@ -119,7 +118,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 )
             )
         }
-        return try DatabaseServerRuntimeConfiguration(
+        return try DatabaseOperationRuntimeConfiguration(
             identity: DatabaseRuntimeIdentity(
                 version: "cloudflare-runtime-verification"
             ),
@@ -128,6 +127,35 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 UnrestrictedDatabaseOperationAdmissionPolicy()
             ),
             clock: RealtimeDatabaseWallClock()
+        )
+    }
+}
+
+private struct RuntimeVerificationJobAuthorizationProvider:
+    CloudflareDatabaseJobAuthorizationProviding {
+    private static let principalIdentifier = "runtime-verification"
+
+    func reference(
+        for authorization: AuthorizationContext
+    ) throws -> DatabaseJobAuthorizationReference {
+        guard authorization.principal?.identifier == Self.principalIdentifier
+        else {
+            throw DatabaseJobAuthorizationError.revalidationFailed
+        }
+        return try DatabaseJobAuthorizationReference(Self.principalIdentifier)
+    }
+
+    func revalidate(
+        _ reference: DatabaseJobAuthorizationReference
+    ) async throws -> AuthorizationContext {
+        guard reference.value == Self.principalIdentifier else {
+            throw DatabaseJobAuthorizationError.revalidationFailed
+        }
+        return .authenticated(
+            Principal(
+                identifier: Self.principalIdentifier,
+                roles: ["admin"]
+            )
         )
     }
 }

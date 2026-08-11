@@ -36,7 +36,7 @@ for runtime_trait in $(printf '%s' "$runtime_traits" | tr ',' ' '); do
             FullTextIndexes | SpatialIndexes | RankIndexes | \
             BitmapIndexes | VersionIndexes | PermutedIndexes | \
             GraphIndexes | AggregationIndexes | LeaderboardIndexes | \
-            Relationships)
+            Relationships | MultipleBases)
             ;;
         *)
             echo "Unknown database runtime trait: $runtime_trait" >&2
@@ -47,6 +47,14 @@ done
 
 runtime_trait_is_enabled() {
     requested_trait=$1
+    if [ "$requested_trait" = "MultipleBases" ]; then
+        case ",$runtime_traits," in
+            *",MultipleBases,"*)
+                return 0
+                ;;
+        esac
+        return 1
+    fi
     case ",$runtime_traits," in
         *",AllRuntimeFeatures,"* | *",$requested_trait,"*)
             return 0
@@ -137,7 +145,7 @@ for required_product in \
     DatabaseMath.o \
     DatabaseEngine.o \
     DatabaseRuntime.o \
-    DatabaseServer.o \
+    DatabaseWireRuntime.o \
     CloudflareDatabase.o
 do
     if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
@@ -145,6 +153,22 @@ do
         exit 1
     fi
 done
+
+if runtime_trait_is_enabled MultipleBases; then
+    runtime_multiple_bases=1
+else
+    runtime_multiple_bases=0
+fi
+if runtime_trait_is_enabled GraphIndexes; then
+    runtime_graph_indexes=1
+else
+    runtime_graph_indexes=0
+fi
+if runtime_trait_is_enabled VectorIndexes; then
+    runtime_vector_indexes=1
+else
+    runtime_vector_indexes=0
+fi
 
 required_feature_products=""
 if runtime_trait_is_enabled ScalarIndexes; then
@@ -225,7 +249,7 @@ for forbidden_product in \
     DatabaseKitFoundation.o \
     StorageKitFoundation.o \
     StorageKitSystemClock.o \
-    DatabaseServerFoundation.o \
+    DatabaseFoundation.o \
     FDBStorage.o \
     SQLiteStorage.o \
     PostgreSQLStorage.o
@@ -246,7 +270,10 @@ node "$repository_root/scripts/verify-reactor-abi.mjs" "$optimized_artifact"
 
 runtime_measurements=$(
     cd "$repository_root/Workers/CloudflareDatabaseRuntime"
-    node --import tsx \
+    DATABASE_RUNTIME_MULTIPLE_BASES="$runtime_multiple_bases" \
+        DATABASE_RUNTIME_GRAPH_INDEXES="$runtime_graph_indexes" \
+        DATABASE_RUNTIME_VECTOR_INDEXES="$runtime_vector_indexes" \
+        node --import tsx \
         scripts/verify-reactor-instantiation.ts \
         "$optimized_artifact"
 )
@@ -254,7 +281,11 @@ printf '%s\n' "$runtime_measurements"
 
 workerd_measurements=$(
     cd "$repository_root/Workers/CloudflareDatabaseRuntime"
-    DATABASE_RUNTIME_ARTIFACT="$optimized_artifact" npm run --silent smoke:workerd
+    DATABASE_RUNTIME_ARTIFACT="$optimized_artifact" \
+        DATABASE_RUNTIME_MULTIPLE_BASES="$runtime_multiple_bases" \
+        DATABASE_RUNTIME_GRAPH_INDEXES="$runtime_graph_indexes" \
+        DATABASE_RUNTIME_VECTOR_INDEXES="$runtime_vector_indexes" \
+        npm run --silent smoke:workerd
 )
 printf '%s\n' "$workerd_measurements"
 

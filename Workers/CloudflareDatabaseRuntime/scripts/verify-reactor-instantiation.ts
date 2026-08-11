@@ -24,8 +24,19 @@ if (artifactPath === undefined) {
   );
 }
 const verifiedArtifactPath = artifactPath;
+const includesMultipleBases = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_MULTIPLE_BASES"
+);
+const includesGraphIndexes = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_GRAPH_INDEXES"
+);
+const includesVectorIndexes = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_VECTOR_INDEXES"
+);
 const requestVectorURL = new URL(
-  "../../../Protocol/runtime-verification-requests-v1.json",
+  includesMultipleBases
+    ? "../../../Protocol/runtime-verification-requests-multiple-bases-v1.json"
+    : "../../../Protocol/runtime-verification-requests-standard-v1.json",
   import.meta.url
 );
 const verificationAuthorization = encodeDatabaseAuthenticatedPrincipal({
@@ -44,7 +55,7 @@ function executeDatabaseRequest(
 interface RuntimeVerificationRequests {
   capabilitiesDescribe: number[];
   schemaDescribe: number[];
-  baseCreate: number[];
+  baseCreate?: number[];
   mutationExecute: number[];
   queryExecute: number[];
   queryAsk: number[];
@@ -127,12 +138,15 @@ async function verifyRuntime(): Promise<void> {
     requests.schemaDescribe
   );
   verifyPayloadContains(schemaResponse, "RuntimeVerificationDocument");
-  const baseCreateResponse = await executeVerifiedRequest(
-    connection,
-    "baseCreate",
-    requests.baseCreate
-  );
-  await connection.alarm();
+  let baseCreateResponse: Uint8Array | undefined;
+  if (includesMultipleBases) {
+    baseCreateResponse = await executeVerifiedRequest(
+      connection,
+      "baseCreate",
+      requireRequestVector(requests.baseCreate, "baseCreate")
+    );
+    await connection.alarm();
+  }
   const mutationResponse = await executeVerifiedRequest(
     connection,
     "mutationExecute",
@@ -144,59 +158,67 @@ async function verifyRuntime(): Promise<void> {
     requests.queryExecute
   );
   verifyPayloadContains(queryResponse, "Cloudflare runtime");
-  const graphQueryResponse = await executeVerifiedRequest(
-    connection,
-    "queryAsk",
-    requests.queryAsk
-  );
-  verifyBooleanResponse(graphQueryResponse, true);
-  await executeVerifiedRequest(
-    connection,
-    "vectorMutationExecute",
-    requests.vectorMutationExecute
-  );
-  await executeVerifiedRequest(
-    connection,
-    "vectorIVFRebuild",
-    requests.vectorIVFRebuild
-  );
-  await executeVerifiedRequest(
-    connection,
-    "vectorPQRebuild",
-    requests.vectorPQRebuild
-  );
-  const vectorIVFResponse = await executeVerifiedRequest(
-    connection,
-    "vectorIVFQuery",
-    requests.vectorIVFQuery
-  );
-  verifyPayloadContains(
-    vectorIVFResponse,
-    "RuntimeVerificationIVFDocument-exact"
-  );
-  const vectorPQResponse = await executeVerifiedRequest(
-    connection,
-    "vectorPQQuery",
-    requests.vectorPQQuery
-  );
-  verifyPayloadContains(
-    vectorPQResponse,
-    "RuntimeVerificationPQDocument-exact"
-  );
-  const vectorFlatResponse = await executeVerifiedRequest(
-    connection,
-    "vectorFlatQuery",
-    requests.vectorFlatQuery
-  );
-  verifyPayloadContains(
-    vectorFlatResponse,
-    "RuntimeVerificationFlatDocument-exact"
-  );
-  await executeVerifiedRequest(
-    connection,
-    "vectorDelete",
-    requests.vectorDelete
-  );
+  let graphQueryResponse: Uint8Array | undefined;
+  if (includesGraphIndexes) {
+    graphQueryResponse = await executeVerifiedRequest(
+      connection,
+      "queryAsk",
+      requests.queryAsk
+    );
+    verifyBooleanResponse(graphQueryResponse, true);
+  }
+  let vectorIVFResponse: Uint8Array | undefined;
+  let vectorPQResponse: Uint8Array | undefined;
+  let vectorFlatResponse: Uint8Array | undefined;
+  if (includesVectorIndexes) {
+    await executeVerifiedRequest(
+      connection,
+      "vectorMutationExecute",
+      requests.vectorMutationExecute
+    );
+    await executeVerifiedRequest(
+      connection,
+      "vectorIVFRebuild",
+      requests.vectorIVFRebuild
+    );
+    await executeVerifiedRequest(
+      connection,
+      "vectorPQRebuild",
+      requests.vectorPQRebuild
+    );
+    vectorIVFResponse = await executeVerifiedRequest(
+      connection,
+      "vectorIVFQuery",
+      requests.vectorIVFQuery
+    );
+    verifyPayloadContains(
+      vectorIVFResponse,
+      "RuntimeVerificationIVFDocument-exact"
+    );
+    vectorPQResponse = await executeVerifiedRequest(
+      connection,
+      "vectorPQQuery",
+      requests.vectorPQQuery
+    );
+    verifyPayloadContains(
+      vectorPQResponse,
+      "RuntimeVerificationPQDocument-exact"
+    );
+    vectorFlatResponse = await executeVerifiedRequest(
+      connection,
+      "vectorFlatQuery",
+      requests.vectorFlatQuery
+    );
+    verifyPayloadContains(
+      vectorFlatResponse,
+      "RuntimeVerificationFlatDocument-exact"
+    );
+    await executeVerifiedRequest(
+      connection,
+      "vectorDelete",
+      requests.vectorDelete
+    );
+  }
   const invocationMilliseconds = performance.now() - invocationStartedAt;
   if (terminalFailure !== null) {
     throw new Error(`runtime entered terminal failure: ${terminalFailure}`);
@@ -209,13 +231,16 @@ async function verifyRuntime(): Promise<void> {
     addressSpaceBytes,
     capabilitiesResponseBytes: capabilitiesResponse.byteLength,
     schemaResponseBytes: schemaResponse.byteLength,
-    baseCreateResponseBytes: baseCreateResponse.byteLength,
+    multipleBases: includesMultipleBases,
+    graphIndexes: includesGraphIndexes,
+    vectorIndexes: includesVectorIndexes,
+    baseCreateResponseBytes: baseCreateResponse?.byteLength ?? null,
     mutationResponseBytes: mutationResponse.byteLength,
     queryResponseBytes: queryResponse.byteLength,
-    graphQueryResponseBytes: graphQueryResponse.byteLength,
-    vectorIVFResponseBytes: vectorIVFResponse.byteLength,
-    vectorPQResponseBytes: vectorPQResponse.byteLength,
-    vectorFlatResponseBytes: vectorFlatResponse.byteLength,
+    graphQueryResponseBytes: graphQueryResponse?.byteLength ?? null,
+    vectorIVFResponseBytes: vectorIVFResponse?.byteLength ?? null,
+    vectorPQResponseBytes: vectorPQResponse?.byteLength ?? null,
+    vectorFlatResponseBytes: vectorFlatResponse?.byteLength ?? null,
     compilationMilliseconds,
     startupMilliseconds,
     invocationMilliseconds,
@@ -241,7 +266,6 @@ function isRuntimeVerificationRequests(
   const names = [
     "capabilitiesDescribe",
     "schemaDescribe",
-    "baseCreate",
     "mutationExecute",
     "queryExecute",
     "queryAsk",
@@ -253,8 +277,32 @@ function isRuntimeVerificationRequests(
     "vectorFlatQuery",
     "vectorDelete",
   ];
+  if (includesMultipleBases) {
+    names.push("baseCreate");
+  }
   return Object.keys(vectors).length === names.length
     && names.every((name) => isByteArray(vectors[name]));
+}
+
+function requireRequestVector(
+  value: number[] | undefined,
+  name: string
+): number[] {
+  if (value === undefined) {
+    throw new Error(`runtime verification request vector is missing ${name}`);
+  }
+  return value;
+}
+
+function readRequiredFeatureFlag(name: string): boolean {
+  const value = process.env[name];
+  if (value === "1") {
+    return true;
+  }
+  if (value === "0") {
+    return false;
+  }
+  throw new Error(`${name} must be either 0 or 1`);
 }
 
 function isByteArray(value: unknown): value is number[] {

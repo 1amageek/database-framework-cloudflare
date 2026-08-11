@@ -4,14 +4,14 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
-import DatabaseServer
+import DatabaseWireRuntime
 import StorageKit
 #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
 import DatabaseTypes
 import VectorIndex
 #endif
 #if !arch(wasm32)
-import DatabaseServerFoundation
+import DatabaseFoundation
 import StorageKitSystemClock
 #endif
 
@@ -19,17 +19,34 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let storageLayout: CloudflareDatabaseStorageLayout
+    #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+    let jobAuthorizationProvider:
+        AnyCloudflareDatabaseJobAuthorizationProvider? =
+            AnyCloudflareDatabaseJobAuthorizationProvider(
+                RuntimeVerificationJobAuthorizationProvider()
+            )
+    #else
+    let jobAuthorizationProvider:
+        AnyCloudflareDatabaseJobAuthorizationProvider? = nil
+    #endif
 
     init() throws {
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
+        #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
         storageLayout = try CloudflareDatabaseStorageLayout(
             domainID: DatabaseStorageDomain.ID("primary"),
             domainNamespacePath: ["database", "runtime-verification"],
             placementID: Base.Placement.ID("default"),
             baseNamespacePath: ["bases"]
         )
+        #else
+        storageLayout = try CloudflareDatabaseStorageLayout(
+            domainID: DatabaseStorageDomain.ID("primary"),
+            domainNamespacePath: ["database", "runtime-verification"]
+        )
+        #endif
     }
 
     func makeContainerDefinition() async throws
@@ -161,7 +178,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
 
     func makeRuntimeConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseServerRuntimeConfiguration {
+    ) async throws -> DatabaseOperationRuntimeConfiguration {
         #if arch(wasm32)
         let clock = CloudflareDatabaseWallClock()
         let identifierGenerator = CloudflareDatabaseUUIDGenerator()
@@ -176,12 +193,12 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 maximumStorageValueBytes: 1_048_576
             )
         )
-        return try DatabaseServerRuntimeConfiguration(
+        return try DatabaseOperationRuntimeConfiguration(
             identity: DatabaseRuntimeIdentity(
                 version: "cloudflare-runtime-verification"
             ),
-            serviceFactory: AnyDatabaseServerServiceFactory(
-                CanonicalDatabaseServerServiceFactory(
+            serviceFactory: AnyDatabaseOperationServiceFactory(
+                CanonicalDatabaseOperationServiceFactory(
                     maintenanceServiceFactory:
                         DatabaseMaintenanceOperationServiceFactory(
                             identifierGenerator: identifierGenerator
@@ -196,3 +213,34 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         )
     }
 }
+
+#if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+private struct RuntimeVerificationJobAuthorizationProvider:
+    CloudflareDatabaseJobAuthorizationProviding {
+    private static let principalIdentifier = "runtime-verification"
+
+    func reference(
+        for authorization: AuthorizationContext
+    ) throws -> DatabaseJobAuthorizationReference {
+        guard authorization.principal?.identifier == Self.principalIdentifier
+        else {
+            throw DatabaseJobAuthorizationError.revalidationFailed
+        }
+        return try DatabaseJobAuthorizationReference(Self.principalIdentifier)
+    }
+
+    func revalidate(
+        _ reference: DatabaseJobAuthorizationReference
+    ) async throws -> AuthorizationContext {
+        guard reference.value == Self.principalIdentifier else {
+            throw DatabaseJobAuthorizationError.revalidationFailed
+        }
+        return .authenticated(
+            Principal(
+                identifier: Self.principalIdentifier,
+                roles: ["admin"]
+            )
+        )
+    }
+}
+#endif

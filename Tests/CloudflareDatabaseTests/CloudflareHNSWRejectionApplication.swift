@@ -5,8 +5,8 @@ import CloudflareDurableObjectStorageWire
 import DatabaseEngine
 import DatabaseKit
 import DatabaseRuntime
-import DatabaseServer
-import DatabaseServerFoundation
+import DatabaseWireRuntime
+import DatabaseFoundation
 import StorageKitSystemClock
 import VectorIndex
 
@@ -15,6 +15,8 @@ final class CloudflareHNSWRejectionApplication:
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let storageLayout: CloudflareDatabaseStorageLayout
+    let jobAuthorizationProvider:
+        AnyCloudflareDatabaseJobAuthorizationProvider? = nil
 
     private let indexConfiguration: any IndexRuntimeConfiguration
 
@@ -24,11 +26,8 @@ final class CloudflareHNSWRejectionApplication:
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "cloudflare-hnsw-rejection"
         )
-        storageLayout = try CloudflareDatabaseStorageLayout(
-            domainID: DatabaseStorageDomain.ID("primary"),
-            domainNamespacePath: ["database", "hnsw-rejection"],
-            placementID: Base.Placement.ID("default"),
-            baseNamespacePath: ["bases"]
+        storageLayout = try makeCloudflareTestStorageLayout(
+            namespace: "hnsw-rejection"
         )
         self.indexConfiguration = indexConfiguration
             ?? VectorIndexConfiguration<CloudflareHNSWRejectionDocument>(
@@ -59,7 +58,7 @@ final class CloudflareHNSWRejectionApplication:
 
     func makeRuntimeConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseServerRuntimeConfiguration {
+    ) async throws -> DatabaseOperationRuntimeConfiguration {
         _ = container
         throw RuntimeVerificationError.unexpectedServiceOperation
     }

@@ -52,7 +52,7 @@ flowchart TD
     C -->|"Yes"| D["Typed Cloudflare configuration error"]
     D --> E["startupFailed completion"]
     C -->|"No"| F["DBContainer.open"]
-    F --> G["Migrations and server runtime readiness"]
+    F --> G["Migrations and operation-runtime readiness"]
 ```
 
 `SwiftHNSW` remains linked when `VectorIndexes` is selected. Link composition

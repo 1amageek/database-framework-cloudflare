@@ -1,8 +1,11 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseEngine
+#if !arch(wasm32)
+import DatabaseFoundation
+#endif
 import DatabaseKit
-import DatabaseServer
+import DatabaseWireRuntime
 import DatabaseTypes
 
 /// Persistent, single-entry database runtime owned by one Durable Object.
@@ -10,7 +13,7 @@ public actor CloudflareDatabaseRuntime {
     private struct Invocation: Sendable {
         let callID: UInt32
         let requestBytes: ByteString
-        let authorization: AuthorizationContext
+        let executionContext: DatabaseRequestExecutionContext
     }
 
     private enum PendingOperation: Sendable {
@@ -18,17 +21,19 @@ public actor CloudflareDatabaseRuntime {
         case alarm(callID: UInt32)
     }
 
-    private let application: AnyDatabaseServerApplication
+    private let application: AnyDatabaseApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
     private let storageLayout: CloudflareDatabaseStorageLayout
     private let storageClient: CloudflareDurableObjectStorageClientComposition
     private let jobScheduler: AnyDatabaseJobScheduler
+    private let jobAuthorizationProvider:
+        AnyCloudflareDatabaseJobAuthorizationProvider?
     private let completion: CloudflareDatabaseCompletionChannel
     private let limits: CloudflareDatabaseRuntimeLimits
 
     private var container: DBContainer?
-    private var serverRuntime: DatabaseServerRuntime?
+    private var operationRuntime: DatabaseOperationRuntime?
     private var isStarting = false
     private var isProcessingOperations = false
     private var pendingOperations: [PendingOperation] = []
@@ -44,12 +49,13 @@ public actor CloudflareDatabaseRuntime {
         completion: CloudflareDatabaseCompletionChannel,
         limits: CloudflareDatabaseRuntimeLimits = .default
     ) {
-        self.application = AnyDatabaseServerApplication(application)
+        self.application = AnyDatabaseApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
         self.storageLayout = application.storageLayout
         self.storageClient = CloudflareDurableObjectStorageClientComposition(storageClient)
         self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
+        self.jobAuthorizationProvider = application.jobAuthorizationProvider
         self.completion = completion
         self.limits = limits
     }
@@ -58,12 +64,14 @@ public actor CloudflareDatabaseRuntime {
         StorageClient: CloudflareDurableObjectStorageClient,
         JobScheduler: DatabaseJobScheduler
     >(
-        application: AnyDatabaseServerApplication,
+        application: AnyDatabaseApplication,
         partitionIdentity: StoragePartitionIdentity,
         storageLimits: CloudflareDurableObjectLimits,
         storageLayout: CloudflareDatabaseStorageLayout,
         storageClient: StorageClient,
         jobScheduler: JobScheduler,
+        jobAuthorizationProvider:
+            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
         completion: CloudflareDatabaseCompletionChannel,
         limits: CloudflareDatabaseRuntimeLimits = .default
     ) {
@@ -75,17 +83,18 @@ public actor CloudflareDatabaseRuntime {
             storageClient
         )
         self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
+        self.jobAuthorizationProvider = jobAuthorizationProvider
         self.completion = completion
         self.limits = limits
     }
 
-    /// Bootstraps the StorageKit engine, application container, and full server runtime.
+    /// Bootstraps the StorageKit engine, application container, and operation runtime.
     public func start(callID: UInt32) async {
         guard callID != 0 else {
             fail(callID: callID, status: .invalidCallID, message: "Call ID must be non-zero")
             return
         }
-        guard serverRuntime == nil else {
+        guard operationRuntime == nil else {
             fail(callID: callID, status: .alreadyStarted, message: "Database runtime is already started")
             return
         }
@@ -105,7 +114,7 @@ public actor CloudflareDatabaseRuntime {
                     try definition.validateCloudflareHostingCapabilities()
                 } catch let error {
                     isStarting = false
-                    serverRuntime = nil
+                    operationRuntime = nil
                     fail(
                         callID: callID,
                         status: .startupFailed,
@@ -121,6 +130,7 @@ public actor CloudflareDatabaseRuntime {
                         monotonicClock: CloudflareDatabaseMonotonicClock()
                     )
                 )
+                #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
                 let storageTopology = try DatabaseStorageTopology(
                     controlDomainID: storageLayout.domainID,
                     domains: [
@@ -139,6 +149,16 @@ public actor CloudflareDatabaseRuntime {
                     ],
                     defaultPlacementID: storageLayout.placementID
                 )
+                #else
+                let controlDomain = try DatabaseStorageDomain(
+                    id: storageLayout.domainID,
+                    namespacePath: storageLayout.domainNamespacePath,
+                    storageEngine: storageEngine
+                )
+                let storageTopology = DatabaseStorageTopology(
+                    controlDomain: controlDomain
+                )
+                #endif
                 let createdContainer = try await definition.open(
                     storageTopology: storageTopology
                 )
@@ -148,11 +168,25 @@ public actor CloudflareDatabaseRuntime {
             let configuration = try await application.makeRuntimeConfiguration(
                 for: container
             )
-            serverRuntime = try await DatabaseServerRuntime(
+            let authorizationValidator = jobAuthorizationProvider.map {
+                AnyDatabaseJobAuthorizationValidator($0)
+            }
+            #if arch(wasm32)
+            let identifierGenerator = AnyDatabaseUUIDGenerator(
+                CloudflareDatabaseUUIDGenerator()
+            )
+            #else
+            let identifierGenerator = AnyDatabaseUUIDGenerator(
+                RandomDatabaseUUIDGenerator()
+            )
+            #endif
+            operationRuntime = try await DatabaseOperationRuntime(
                 container: container,
                 configuration: configuration,
-                hostServices: DatabaseServerHostServices(
-                    jobScheduler: jobScheduler
+                hostServices: DatabaseHostServices(
+                    jobScheduler: jobScheduler,
+                    identifierGenerator: identifierGenerator,
+                    jobAuthorizationValidator: authorizationValidator
                 )
             )
             isStarting = false
@@ -162,7 +196,7 @@ public actor CloudflareDatabaseRuntime {
             fail(callID: callID, status: .cancelled, message: "Database runtime startup was cancelled")
         } catch {
             isStarting = false
-            serverRuntime = nil
+            operationRuntime = nil
             fail(
                 callID: callID,
                 status: .startupFailed,
@@ -189,7 +223,7 @@ public actor CloudflareDatabaseRuntime {
             )
             return
         }
-        guard serverRuntime != nil else {
+        guard operationRuntime != nil else {
             fail(callID: callID, status: .notStarted, message: "Database runtime is not started")
             return
         }
@@ -202,12 +236,27 @@ public actor CloudflareDatabaseRuntime {
             return
         }
 
+        let jobAuthorizationReference: DatabaseJobAuthorizationReference?
+        do {
+            jobAuthorizationReference = try jobAuthorizationProvider?
+                .reference(for: authorization)
+        } catch {
+            fail(
+                callID: callID,
+                status: .runtimeFailed,
+                message: "Database job authorization reference is invalid"
+            )
+            return
+        }
         pendingOperations.append(
             .invocation(
                 Invocation(
                     callID: callID,
                     requestBytes: requestBytes,
-                    authorization: authorization
+                    executionContext: DatabaseRequestExecutionContext(
+                        authorization: authorization,
+                        jobAuthorizationReference: jobAuthorizationReference
+                    )
                 )
             )
         )
@@ -220,7 +269,7 @@ public actor CloudflareDatabaseRuntime {
             fail(callID: callID, status: .invalidCallID, message: "Call ID must be non-zero")
             return
         }
-        guard serverRuntime != nil else {
+        guard operationRuntime != nil else {
             fail(callID: callID, status: .notStarted, message: "Database runtime is not started")
             return
         }
@@ -248,7 +297,7 @@ public actor CloudflareDatabaseRuntime {
         isProcessingOperations = true
         while !pendingOperations.isEmpty {
             let operation = pendingOperations.removeFirst()
-            guard let serverRuntime else {
+            guard let operationRuntime else {
                 let callID = Self.callID(for: operation)
                 fail(
                     callID: callID,
@@ -259,10 +308,10 @@ public actor CloudflareDatabaseRuntime {
             }
             switch operation {
             case .invocation(let invocation):
-                await execute(invocation, using: serverRuntime)
+                await execute(invocation, using: operationRuntime)
             case .alarm(let callID):
                 do {
-                    try await serverRuntime.runScheduledWork()
+                    try await operationRuntime.runScheduledWork()
                     completion.complete(
                         callID: callID,
                         status: .success,
@@ -288,14 +337,12 @@ public actor CloudflareDatabaseRuntime {
 
     private func execute(
         _ invocation: Invocation,
-        using serverRuntime: DatabaseServerRuntime
+        using operationRuntime: DatabaseOperationRuntime
     ) async {
         do {
-            let responseBytes = try await serverRuntime.execute(
+            let responseBytes = try await operationRuntime.execute(
                 invocation.requestBytes,
-                context: DatabaseRequestExecutionContext(
-                    authorization: invocation.authorization
-                )
+                context: invocation.executionContext
             )
             guard responseBytes.count <= limits.maximumResponseBytes else {
                 fail(

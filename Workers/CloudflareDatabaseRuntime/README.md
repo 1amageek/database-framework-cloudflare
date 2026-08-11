@@ -126,12 +126,16 @@ DATABASE_RUNTIME_TRAITS=GraphIndexes \
 
 The feasibility gate builds the selected app-specific verification reactor
 with Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
-executes typed schema, Base creation, mutation, and query requests first against the Node
+executes typed schema, mutation, and query requests first against the Node
 reference host and then through an actual workerd Worker, Durable Object RPC,
-and Durable Object SQLite. The mutation creates an OWL-class entity, and a
-SPARQL ASK request must observe its generated RDF projection. The workerd
-process is restarted against the same persisted state and must still return
-both the inserted entity and the RDF query result. The gate also enforces
+and Durable Object SQLite. With `MultipleBases`, it first provisions the Base
+through its persistent lifecycle job; the standard fixture uses the database
+data root. When `GraphIndexes` is selected, the mutation creates an OWL-class
+entity and a SPARQL ASK request must observe its generated RDF projection. The
+workerd process is restarted against the same persisted state and must still
+return the inserted entity and every selected graph result. Each process stop
+must complete and make the endpoint unreachable before the next generation is
+started. The gate also enforces
 Worker size, isolate address-space, startup limits, required selected feature
 products, exclusion of unselected feature products, and exclusion of host-only
 adapters. A `VectorIndexes` composition additionally runs startup
@@ -141,10 +145,15 @@ actual `VectorIndex` and `SwiftHNSW` products because the framework feature is
 cohesive, while supported execution is determined by the Cloudflare capability
 validator rather than link presence.
 
-The 2026-08-10 `AllRuntimeFeatures` gate produced a 10,024,335-byte optimized
-reactor (3,510,573 bytes gzip), a 67,108,864-byte address space, and a
-32.457 ms startup measurement. Durable Object RPC and SQLite persistence
-after a workerd restart both passed.
+The 2026-08-12 gate produced a 9,292,168-byte optimized
+`AllRuntimeFeatures` reactor (3,249,509 bytes gzip) and a 10,183,059-byte
+`AllRuntimeFeatures,MultipleBases` reactor (3,566,916 bytes gzip). Both used a
+67,108,864-byte address space. Their startup measurements were 64.470 ms and
+36.843 ms, respectively. Durable Object RPC, SQLite persistence after a
+workerd restart, and negative readiness after every process stop passed for
+both compositions. A `GraphIndexes`-only reactor was 7,854,796 bytes
+(2,766,727 bytes gzip), started in 26.209 ms, executed its Graph and RDF path,
+and proved that every unselected index product was absent from the link inputs.
 
 `SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and
 `DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
