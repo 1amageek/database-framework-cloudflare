@@ -16,7 +16,8 @@ flowchart LR
   RPC --> DO["CloudflareDatabaseDurableObject"]
   DO --> Connection["DatabaseRuntimeConnection"]
   Connection --> Runtime["Application database runtime"]
-  Runtime --> Operations["DatabaseOperationRuntime<br/>host-independent execution"]
+  Runtime --> Adapter["DatabaseWireAdapter<br/>bounded framing"]
+  Adapter --> Operations["DatabaseOperationInstance<br/>host-independent execution"]
   Operations --> Storage["StorageKit engine"]
   Storage --> SQLite["Durable Object SQLite"]
 ```
@@ -37,7 +38,8 @@ does not parse DatabaseWire operations or implement queries, schemas, indexes,
 or transactions.
 
 Cloudflare does not depend on the native `database-server` package. Both hosts
-consume the optional, host-independent `DatabaseWireRuntime` product from
+consume the optional, host-independent `DatabaseOperations` product and the
+bounded `DatabaseWireAdapter` product from
 `database-framework`; native listeners and credentials remain outside the
 Embedded WASM graph.
 
@@ -47,18 +49,18 @@ The package exports one library product, `CloudflareDatabase`.
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseApplication` | Supplies the application storage identity, single-domain layout, unopened container definition, and operation-runtime configuration |
+| `CloudflareDatabaseOperationApplication` | Supplies the application storage identity, single-domain layout, unopened container definition, and operation configuration |
 | `CloudflareDatabaseStorageLayout` | Names the Cloudflare data domain and, with `MultipleBases`, its Base placement root |
 | `CloudflareDatabaseAuthorizationCodec` | Carries an already authenticated principal across the private host/reactor boundary |
 | `CloudflareDatabaseJobAuthorizationProviding` | Maps authenticated requests to opaque job references and revalidates current authority for every durable job slice |
 | `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through one operation runtime |
-| `CloudflareDatabaseRuntimeCommandChannel` | Submits synchronous boundary commands to the actor-owned runtime |
+| `CloudflareDatabaseRuntimeCommandChannel` | Preserves synchronous ABI submission order and bounds commands before the actor-owned runtime |
 | `CloudflareDatabaseRuntimeEntrypoint` | Owns one application runtime and implements operations called by the application's fixed exports |
 | `DatabaseInvocationPayloadOwnership` | Transfers request payload ownership into immutable `ByteString` owners without rematerializing the frame |
 | `CloudflareDatabaseTaskScheduler` | Runs Swift concurrency tasks through Cloudflare timers |
 | `CloudflareDatabaseClockService` | Suspends and resumes monotonic Swift clock waits |
 
-The application implements `CloudflareDatabaseApplication` and constructs a
+The application implements `CloudflareDatabaseOperationApplication` and constructs a
 `CloudflareDatabaseRuntimeEntrypoint` in its reactor target. There is no generic
 runtime artifact: application schema and command registration are compile-time
 dependencies.
@@ -238,7 +240,7 @@ sequenceDiagram
   participant App as Application Worker
   participant DO as Database Durable Object
   participant Runtime as Swift runtime
-  participant Server as DatabaseOperationRuntime
+  participant Server as DatabaseOperationInstance
   participant SQLite as DO SQLite
 
   App->>App: authenticate external credential
@@ -281,7 +283,7 @@ the runtime path.
    `blockConcurrencyWhile`.
 2. Startup validates host capabilities before opening `DBContainer`, installs
    the single-domain topology, and completes only after StorageKit and the full
-   `DatabaseOperationRuntime` are ready. The standard fixture operates on the
+   `DatabaseOperationInstance` are ready. The standard fixture operates on the
    database data root. The `MultipleBases` fixture creates one Base through its
    persistent lifecycle job before data operations. Both fixtures execute Flat,
    IVF, and PQ write/index/query/delete checks when `VectorIndexes` is selected;
@@ -379,8 +381,8 @@ that unselected index products, including `VectorIndex` and `SwiftHNSW`, are
 absent from the link inputs.
 
 The same fixture executes Flat, IVF, and PQ and rejects HNSW before storage
-engine creation. Native package verification passes all 32 Cloudflare tests,
-and the Worker package passes all 121 TypeScript tests.
+engine creation. Native package verification requires all 36 Cloudflare tests,
+and the Worker package requires all 122 TypeScript tests to pass.
 
 The gate defaults to `AllRuntimeFeatures`. Set `DATABASE_RUNTIME_TRAITS` to a
 comma-separated trait list for an application-specific artifact:

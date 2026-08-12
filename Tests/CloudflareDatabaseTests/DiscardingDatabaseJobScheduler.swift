@@ -1,4 +1,4 @@
-import DatabaseWireRuntime
+import DatabaseOperations
 import DatabaseTypes
 
 struct DiscardingDatabaseJobScheduler: DatabaseJobScheduler {

@@ -1,4 +1,4 @@
-import DatabaseWireRuntime
+import DatabaseOperations
 import StorageKit
 
 enum ScheduledWorkDiagnostic {

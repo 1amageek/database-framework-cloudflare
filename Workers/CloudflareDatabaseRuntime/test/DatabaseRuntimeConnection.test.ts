@@ -49,14 +49,33 @@ test("runtime connection shutdown rejects subsequent calls without a fatal reset
     (reason) => runtimeFailureReasons.push(reason)
   );
 
-  connection.shutdown();
-  connection.shutdown();
+  await connection.shutdown();
+  await connection.shutdown();
 
   await assert.rejects(
     executeDatabaseRequest(connection, new Uint8Array([1])),
     DatabaseRuntimeConnectionShutdownError
   );
   assert.deepEqual(runtimeFailureReasons, []);
+});
+
+test("concurrent shutdown calls share one runtime shutdown", async () => {
+  let shutdownCount = 0;
+  const connection = await DatabaseRuntimeConnection.instantiate(
+    emptyRuntimeProgram,
+    { dispatchBytes: (bytes) => bytes },
+    resolvingAlarmScheduler(),
+    controllableDatabaseRuntimeInstantiator(
+      { kind: "echo" },
+      { didShutdown: () => { shutdownCount += 1; } }
+    ),
+    limits(),
+    () => {}
+  );
+
+  await Promise.all([connection.shutdown(), connection.shutdown()]);
+
+  assert.equal(shutdownCount, 1);
 });
 
 test("runtime connection owns request bytes across asynchronous runtime execution", async () => {
@@ -730,6 +749,11 @@ test("a runtime invocation trap permanently poisons its runtime generation", asy
     (error: unknown) => error instanceof Error
       && error.message === "invoke trap"
   );
+  await assert.rejects(
+    connection.shutdown(),
+    (error: unknown) => error instanceof Error
+      && error.message === "invoke trap"
+  );
   assert.deepEqual(runtimeFailureReasons, ["invoke trap"]);
 });
 
@@ -881,7 +905,7 @@ test("runtime connection installs cancellable clock services and routes resume",
   await Promise.resolve();
   assert.deepEqual(resumedWaitIDs, [53]);
 
-  connection.shutdown();
+  await connection.shutdown();
 });
 
 test("runtime connection supplies monotonic wall-clock and unsigned random values", async () => {
@@ -926,7 +950,7 @@ test("runtime connection supplies monotonic wall-clock and unsigned random value
     assert.ok(value <= 0xffff_ffff_ffff_ffffn);
   }
 
-  connection.shutdown();
+  await connection.shutdown();
 });
 
 test("clock wait IDs preserve unsigned WebAssembly i32 bit patterns", async () => {
@@ -964,7 +988,7 @@ test("clock wait IDs preserve unsigned WebAssembly i32 bit patterns", async () =
 
   assert.deepEqual(resumedWaitIDs, [0xffff_ffff]);
   assert.equal(connection.scheduledClockWaitCount, 0);
-  connection.shutdown();
+  await connection.shutdown();
 });
 
 const completionProtocolViolations = [

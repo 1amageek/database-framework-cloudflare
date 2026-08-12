@@ -205,6 +205,7 @@ function runtimeEndpoints(
     start: () => undefined,
     invoke: () => undefined,
     alarm: () => undefined,
+    shutdown: () => undefined,
     runScheduledTask,
     resumeClockWait: () => undefined,
     addressSpace: new WebAssembly.Memory({ initial: 1 }),

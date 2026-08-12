@@ -4,11 +4,11 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
-import DatabaseWireRuntime
+import DatabaseOperations
 import DatabaseFoundation
 import StorageKitSystemClock
 
-final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
+final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplication {
     private enum JobServiceSelection: Sendable {
         case injected(AnyDatabaseJobService)
         case persistent
@@ -87,9 +87,9 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
         )
     }
 
-    func makeRuntimeConfiguration(
+    func makeOperationConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseOperationRuntimeConfiguration {
+    ) async throws -> DatabaseOperationConfiguration {
         _ = container
         let serviceFactory: AnyDatabaseOperationServiceFactory
         switch jobServiceSelection {
@@ -118,15 +118,14 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 )
             )
         }
-        return try DatabaseOperationRuntimeConfiguration(
-            identity: DatabaseRuntimeIdentity(
+        return try DatabaseOperationConfiguration(
+            identity: DatabaseOperationIdentity(
                 version: "cloudflare-runtime-verification"
             ),
             serviceFactory: serviceFactory,
             admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
                 UnrestrictedDatabaseOperationAdmissionPolicy()
             ),
-            clock: RealtimeDatabaseWallClock()
         )
     }
 }

@@ -4,7 +4,7 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
-import DatabaseWireRuntime
+import DatabaseOperations
 import StorageKit
 #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
 import DatabaseTypes
@@ -15,7 +15,7 @@ import DatabaseFoundation
 import StorageKitSystemClock
 #endif
 
-final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
+final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let storageLayout: CloudflareDatabaseStorageLayout
@@ -176,9 +176,9 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
 
     #endif
 
-    func makeRuntimeConfiguration(
+    func makeOperationConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseOperationRuntimeConfiguration {
+    ) async throws -> DatabaseOperationConfiguration {
         #if arch(wasm32)
         let clock = CloudflareDatabaseWallClock()
         let identifierGenerator = CloudflareDatabaseUUIDGenerator()
@@ -193,8 +193,8 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
                 maximumStorageValueBytes: 1_048_576
             )
         )
-        return try DatabaseOperationRuntimeConfiguration(
-            identity: DatabaseRuntimeIdentity(
+        return try DatabaseOperationConfiguration(
+            identity: DatabaseOperationIdentity(
                 version: "cloudflare-runtime-verification"
             ),
             serviceFactory: AnyDatabaseOperationServiceFactory(
@@ -209,7 +209,6 @@ final class RuntimeVerificationApplication: CloudflareDatabaseApplication {
             admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
                 UnrestrictedDatabaseOperationAdmissionPolicy()
             ),
-            clock: clock
         )
     }
 }

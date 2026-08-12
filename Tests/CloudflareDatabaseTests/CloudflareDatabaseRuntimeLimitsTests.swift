@@ -2,52 +2,66 @@ import CloudflareDatabase
 import Testing
 
 @Suite("Cloudflare database runtime limits")
-struct CloudflareDatabaseRuntimeLimitsTests {
-    @Test("values below protocol minima are rejected")
+struct CloudflareDatabaseOperationLimitsTests {
+    @Test("limits reject values below minima and derive independent Wire budgets")
     func rejectsValuesBelowProtocolMinima() {
         #expect(
-            throws: CloudflareDatabaseRuntimeLimitsError.belowMinimum(
+            throws: CloudflareDatabaseOperationLimitsError.belowMinimum(
                 field: "maximumRequestBytes",
                 value: 0,
                 minimum: 1
             )
         ) {
-            try CloudflareDatabaseRuntimeLimits(
+            try CloudflareDatabaseOperationLimits(
                 maximumRequestBytes: 0,
                 maximumResponseBytes: 1,
                 maximumErrorBytes:
-                    CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes,
+                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
                 maximumPendingInvocations: 1
             )
         }
         #expect(
-            throws: CloudflareDatabaseRuntimeLimitsError.belowMinimum(
+            throws: CloudflareDatabaseOperationLimitsError.belowMinimum(
                 field: "maximumErrorBytes",
                 value:
-                    CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes - 1,
+                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes - 1,
                 minimum:
-                    CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes
+                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes
             )
         ) {
-            try CloudflareDatabaseRuntimeLimits(
+            try CloudflareDatabaseOperationLimits(
                 maximumRequestBytes: 1,
                 maximumResponseBytes: 1,
                 maximumErrorBytes:
-                    CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes - 1,
+                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes - 1,
                 maximumPendingInvocations: 1
             )
+        }
+
+        do {
+            let limits = try CloudflareDatabaseOperationLimits(
+                maximumRequestBytes: 1_024,
+                maximumResponseBytes: 2_048,
+                maximumErrorBytes:
+                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
+                maximumPendingInvocations: 1
+            )
+            #expect(try limits.requestWireLimits().maximumFrameBytes == 1_024)
+            #expect(try limits.responseWireLimits().maximumFrameBytes == 2_048)
+        } catch {
+            Issue.record("Valid runtime limits failed: \(error)")
         }
     }
 
     @Test("values above protocol maxima are rejected")
     func rejectsValuesAboveProtocolMaxima() {
-        #expect(throws: CloudflareDatabaseRuntimeLimitsError.self) {
-            try CloudflareDatabaseRuntimeLimits(
+        #expect(throws: CloudflareDatabaseOperationLimitsError.self) {
+            try CloudflareDatabaseOperationLimits(
                 maximumRequestBytes:
-                    CloudflareDatabaseRuntimeLimits.protocolMaximumFrameBytes + 1,
+                    CloudflareDatabaseOperationLimits.protocolMaximumFrameBytes + 1,
                 maximumResponseBytes: 1,
                 maximumErrorBytes:
-                    CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes,
+                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
                 maximumPendingInvocations: 1
             )
         }

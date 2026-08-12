@@ -2,10 +2,10 @@ import CloudflareDatabase
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseEngine
-import DatabaseWireRuntime
+import DatabaseOperations
 
 final class InternalErrorRuntimeVerificationApplication:
-    CloudflareDatabaseApplication {
+    CloudflareDatabaseOperationApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let storageLayout: CloudflareDatabaseStorageLayout
@@ -27,9 +27,9 @@ final class InternalErrorRuntimeVerificationApplication:
             .makeContainerDefinition()
     }
 
-    func makeRuntimeConfiguration(
+    func makeOperationConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseOperationRuntimeConfiguration {
+    ) async throws -> DatabaseOperationConfiguration {
         _ = container
         throw DatabaseRuntimeError.internalError(
             "sensitive-runtime-internal-detail"

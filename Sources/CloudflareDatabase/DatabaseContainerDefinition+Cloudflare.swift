@@ -1,4 +1,4 @@
-import DatabaseWireRuntime
+import DatabaseOperations
 
 extension DatabaseContainerDefinition {
     /// Validates platform restrictions before Cloudflare storage opens.

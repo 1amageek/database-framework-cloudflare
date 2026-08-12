@@ -1,5 +1,7 @@
+import DatabaseWire
+
 /// Bounded resource policy for one persistent database runtime.
-public struct CloudflareDatabaseRuntimeLimits: Sendable, Hashable {
+public struct CloudflareDatabaseOperationLimits: Sendable, Hashable {
     public static let protocolMaximumFrameBytes = 16 * 1_024 * 1_024
     public static let protocolMinimumErrorBytes = 256
     public static let protocolMaximumErrorBytes = 16 * 1_024
@@ -43,7 +45,7 @@ public struct CloudflareDatabaseRuntimeLimits: Sendable, Hashable {
         self.maximumPendingInvocations = maximumPendingInvocations
     }
 
-    public static let `default` = CloudflareDatabaseRuntimeLimits(
+    public static let `default` = CloudflareDatabaseOperationLimits(
         maximumRequestBytes: protocolMaximumFrameBytes,
         maximumResponseBytes: protocolMaximumFrameBytes,
         maximumErrorBytes: 4 * 1_024,
@@ -72,18 +74,46 @@ public struct CloudflareDatabaseRuntimeLimits: Sendable, Hashable {
         maximum: Int
     ) throws {
         guard value >= minimum else {
-            throw CloudflareDatabaseRuntimeLimitsError.belowMinimum(
+            throw CloudflareDatabaseOperationLimitsError.belowMinimum(
                 field: field,
                 value: value,
                 minimum: minimum
             )
         }
         guard value <= maximum else {
-            throw CloudflareDatabaseRuntimeLimitsError.exceedsMaximum(
+            throw CloudflareDatabaseOperationLimitsError.exceedsMaximum(
                 field: field,
                 value: value,
                 maximum: maximum
             )
         }
+    }
+
+    package func requestWireLimits() throws -> DatabaseWireLimits {
+        try wireLimits(maximumFrameBytes: maximumRequestBytes)
+    }
+
+    package func responseWireLimits() throws -> DatabaseWireLimits {
+        try wireLimits(maximumFrameBytes: maximumResponseBytes)
+    }
+
+    private func wireLimits(
+        maximumFrameBytes: Int
+    ) throws -> DatabaseWireLimits {
+        let canonical = DatabaseWireLimits.default
+        return try DatabaseWireLimits(
+            maximumFrameBytes: maximumFrameBytes,
+            maximumStringBytes: min(
+                canonical.maximumStringBytes,
+                maximumFrameBytes
+            ),
+            maximumByteStringBytes: min(
+                canonical.maximumByteStringBytes,
+                maximumFrameBytes
+            ),
+            maximumCollectionCount: canonical.maximumCollectionCount,
+            maximumNestingDepth: canonical.maximumNestingDepth,
+            maximumObjectCount: canonical.maximumObjectCount
+        )
     }
 }

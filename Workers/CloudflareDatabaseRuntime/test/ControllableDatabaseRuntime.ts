@@ -50,6 +50,7 @@ export type DatabaseRuntimeLifecycleObserver = {
   didRegisterRuntimeServices?(runtimeServices: WebAssembly.Imports): void;
   didResumeClockWait?(waitID: number): void;
   didRunScheduledTask?(taskID: number): void;
+  didShutdown?(): void;
 };
 
 export function controllableDatabaseRuntimeInstantiator(
@@ -379,6 +380,12 @@ export function controllableDatabaseRuntimeInstantiator(
             ? new TextEncoder().encode(behavior.message)
             : new Uint8Array(behavior.bytes);
           deliverCompletionBytes(callID, behavior.status, bytes);
+        });
+      },
+      database_shutdown: (callID: number) => {
+        lifecycleObserver.didShutdown?.();
+        enqueueTask(() => {
+          deliverRuntimeCompletion(runtimeServices, callID, 0, 0, 0);
         });
       },
       database_executor_run: (taskID: number) => {

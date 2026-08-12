@@ -224,7 +224,7 @@ async function verifyRuntime(): Promise<void> {
     throw new Error(`runtime entered terminal failure: ${terminalFailure}`);
   }
   const addressSpaceBytes = connection.runtimeAddressSpaceByteCount;
-  connection.shutdown();
+  await connection.shutdown();
 
   console.log(JSON.stringify({
     artifactPath: verifiedArtifactPath,

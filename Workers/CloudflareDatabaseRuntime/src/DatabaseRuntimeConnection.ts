@@ -40,7 +40,11 @@ type PendingInvocation = {
   completionReceived: boolean;
 };
 
-type DatabaseRuntimeCallPurpose = "startup" | "request" | "scheduledWork";
+type DatabaseRuntimeCallPurpose =
+  | "startup"
+  | "request"
+  | "scheduledWork"
+  | "shutdown";
 
 type RuntimeCompletion = {
   payload: Uint8Array | null;
@@ -87,6 +91,7 @@ export class DatabaseRuntimeConnection {
   private runtimeInstance: import("./DatabaseRuntimeInstance").DatabaseRuntimeInstance | null = null;
   private nextCallID = 1;
   private terminalError: Error | null = null;
+  private shutdownPromise: Promise<void> | null = null;
   private alarmScheduleTail: Promise<void> = Promise.resolve();
   private pendingStorageResponse: Uint8Array | null = null;
 
@@ -321,9 +326,30 @@ export class DatabaseRuntimeConnection {
     return this.runtimeEndpoints().addressSpace.buffer.byteLength;
   }
 
-  shutdown(): void {
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise !== null) {
+      return this.shutdownPromise;
+    }
     if (this.terminalError !== null) {
-      return;
+      return Promise.reject(this.terminalError);
+    }
+    const shutdownPromise = this.performShutdown();
+    this.shutdownPromise = shutdownPromise;
+    return shutdownPromise;
+  }
+
+  private async performShutdown(): Promise<void> {
+    const runtimeEndpoints = this.runtimeEndpoints();
+    const payload = await this.performInvocation("shutdown", (callID) => {
+      runtimeEndpoints.shutdown(callID);
+    });
+    if (payload.byteLength !== 0) {
+      const error = new DatabaseRuntimeInvocationError(
+        databaseCompletionStatus.runtimeFailed,
+        "Database runtime shutdown returned an unexpected payload"
+      );
+      this.enterTerminal(error);
+      throw error;
     }
     const shutdownError = new DatabaseRuntimeConnectionShutdownError();
     this.terminalError = shutdownError;

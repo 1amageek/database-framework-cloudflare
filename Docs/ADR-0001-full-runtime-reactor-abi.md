@@ -17,7 +17,7 @@ does not interpret database operations, schemas, queries, indexes, jobs, or
 transactions.
 
 The reactor is a full runtime because database semantics execute through
-`DBContainer`, `DatabaseRuntime`, and `DatabaseOperationRuntime`; it does not mean
+`DBContainer`, `DatabaseRuntime`, and `DatabaseOperationInstance`; it does not mean
 that every optional index implementation must be linked into every
 application. SwiftPM traits define the application feature closure at compile
 time. `GraphIndexes` also selects `ScalarIndexes`, which graph storage requires.
@@ -40,6 +40,7 @@ contract are recorded in
 | `database_start` | `(u32) -> void` | Bootstrap storage topology, container, and operation runtime |
 | `database_invoke` | `(u32, u32, u32, u32, u32) -> void` | Consume an authorization frame and DatabaseWire request, then enqueue one authenticated invocation |
 | `database_alarm` | `(u32) -> void` | Run one bounded persistent-job wake-up from a Durable Object alarm |
+| `database_shutdown` | `(u32) -> void` | Stop admission, drain accepted work, and await authoritative database shutdown |
 | `database_executor_run` | `(u32) -> void` | Run one scheduled Swift task |
 | `database_clock_resume` | `(u32) -> void` | Resume one currently registered monotonic wait |
 

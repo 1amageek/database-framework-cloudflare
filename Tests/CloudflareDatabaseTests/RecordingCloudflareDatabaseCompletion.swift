@@ -34,4 +34,20 @@ final class RecordingCloudflareDatabaseCompletion:
             records.first { $0.callID == callID }
         }
     }
+
+    func waitForCompletion(callID: UInt32) async throws -> CompletionRecord {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(2))
+        while clock.now < deadline {
+            if let completion = completion(callID: callID) {
+                return completion
+            }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        throw WaitError.timedOut(callID)
+    }
+
+    private enum WaitError: Error {
+        case timedOut(UInt32)
+    }
 }

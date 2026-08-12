@@ -1,4 +1,4 @@
-import DatabaseWireRuntime
+import DatabaseOperations
 import DatabaseTypes
 import StorageKit
 import Testing
@@ -52,7 +52,7 @@ struct ScheduledWorkDiagnosticTests {
         let payload = RuntimeFailurePayload.encode(
             String(repeating: "x", count: 257),
             maximumByteCount:
-                CloudflareDatabaseRuntimeLimits.protocolMinimumErrorBytes
+                CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes
         )
 
         #expect(string(from: payload) == RuntimeFailurePayload.encodingFailure)

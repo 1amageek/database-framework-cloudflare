@@ -1,4 +1,4 @@
-import DatabaseWireRuntime
+import DatabaseOperations
 
 final class RuntimeVerificationServiceFactory: DatabaseOperationServiceFactory {
     let jobService: AnyDatabaseJobService

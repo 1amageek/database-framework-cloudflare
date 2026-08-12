@@ -10,6 +10,7 @@ export function requireDatabaseRuntimeEndpoints(
   const startEndpoint = unvalidatedEndpoints.database_start;
   const invokeEndpoint = unvalidatedEndpoints.database_invoke;
   const alarmEndpoint = unvalidatedEndpoints.database_alarm;
+  const shutdownEndpoint = unvalidatedEndpoints.database_shutdown;
   const runScheduledTaskEndpoint = unvalidatedEndpoints.database_executor_run;
   const resumeClockWaitEndpoint = unvalidatedEndpoints.database_clock_resume;
   const addressSpace = unvalidatedEndpoints.memory;
@@ -27,6 +28,9 @@ export function requireDatabaseRuntimeEndpoints(
   }
   if (typeof alarmEndpoint !== "function") {
     throw new Error("runtime instance does not export database_alarm");
+  }
+  if (typeof shutdownEndpoint !== "function") {
+    throw new Error("runtime instance does not export database_shutdown");
   }
   if (typeof runScheduledTaskEndpoint !== "function") {
     throw new Error("runtime instance does not export database_executor_run");
@@ -52,6 +56,7 @@ export function requireDatabaseRuntimeEndpoints(
       requestByteCount: number
     ) => void,
     alarm: alarmEndpoint as (callID: number) => void,
+    shutdown: shutdownEndpoint as (callID: number) => void,
     runScheduledTask: runScheduledTaskEndpoint as (taskID: number) => void,
     resumeClockWait: resumeClockWaitEndpoint as (waitID: number) => void,
     addressSpace,

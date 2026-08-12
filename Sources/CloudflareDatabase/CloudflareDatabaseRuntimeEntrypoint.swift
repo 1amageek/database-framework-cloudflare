@@ -2,25 +2,25 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseKit
-import DatabaseWireRuntime
+import DatabaseOperations
 import DatabaseTypes
 import Synchronization
 
 /// Application-facing owner of one persistent database runtime instance.
 public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
-    private let application: AnyDatabaseApplication
+    private let application: AnyDatabaseOperationApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
     private let storageLayout: CloudflareDatabaseStorageLayout
     private let jobAuthorizationProvider:
         AnyCloudflareDatabaseJobAuthorizationProvider?
     private let completion: CloudflareDatabaseCompletionChannel
-    private let limits: CloudflareDatabaseRuntimeLimits
+    private let limits: CloudflareDatabaseOperationLimits
     private let storageTransportLimits: CloudflareDatabaseStorageTransportLimits
     private let invocationPayloadOwnership: DatabaseInvocationPayloadOwnership
     private let runtimeCommandChannel = Mutex<CloudflareDatabaseRuntimeCommandChannel?>(nil)
 
-    public init<Application: CloudflareDatabaseApplication>(
+    public init<Application: CloudflareDatabaseOperationApplication>(
         application: Application,
         completion: CloudflareDatabaseCompletionChannel =
             CloudflareDatabaseCompletionChannel(),
@@ -31,30 +31,30 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         maximumStorageRequestBytes: Int = 16 * 1_024 * 1_024,
         maximumStorageResponseBytes: Int = 16 * 1_024 * 1_024
     ) throws {
-        try CloudflareDatabaseRuntimeLimits.validate(
+        try CloudflareDatabaseOperationLimits.validate(
             maximumRequestBytes,
             field: "maximumRequestBytes",
-            maximum: CloudflareDatabaseRuntimeLimits
+            maximum: CloudflareDatabaseOperationLimits
                 .protocolMaximumFrameBytes
         )
-        try CloudflareDatabaseRuntimeLimits.validate(
+        try CloudflareDatabaseOperationLimits.validate(
             maximumResponseBytes,
             field: "maximumResponseBytes",
-            maximum: CloudflareDatabaseRuntimeLimits
+            maximum: CloudflareDatabaseOperationLimits
                 .protocolMaximumFrameBytes
         )
-        try CloudflareDatabaseRuntimeLimits.validate(
+        try CloudflareDatabaseOperationLimits.validate(
             maximumErrorBytes,
             field: "maximumErrorBytes",
-            minimum: CloudflareDatabaseRuntimeLimits
+            minimum: CloudflareDatabaseOperationLimits
                 .protocolMinimumErrorBytes,
-            maximum: CloudflareDatabaseRuntimeLimits
+            maximum: CloudflareDatabaseOperationLimits
                 .protocolMaximumErrorBytes
         )
-        try CloudflareDatabaseRuntimeLimits.validate(
+        try CloudflareDatabaseOperationLimits.validate(
             maximumPendingInvocations,
             field: "maximumPendingInvocations",
-            maximum: CloudflareDatabaseRuntimeLimits
+            maximum: CloudflareDatabaseOperationLimits
                 .protocolMaximumPendingInvocations
         )
         try CloudflareDatabaseStorageTransportLimits.validate(
@@ -65,13 +65,13 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             maximumStorageResponseBytes,
             field: "maximumStorageResponseBytes"
         )
-        self.application = AnyDatabaseApplication(application)
+        self.application = AnyDatabaseOperationApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
         self.storageLayout = application.storageLayout
         self.jobAuthorizationProvider = application.jobAuthorizationProvider
         self.completion = completion
-        self.limits = CloudflareDatabaseRuntimeLimits(
+        self.limits = CloudflareDatabaseOperationLimits(
             maximumRequestBytes: maximumRequestBytes,
             maximumResponseBytes: maximumResponseBytes,
             maximumErrorBytes: maximumErrorBytes,
@@ -233,6 +233,22 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             return
         }
         commandChannel.alarm(callID: callID)
+    }
+
+    public func shutdown(callID: UInt32) {
+        guard callID != 0 else {
+            completeFailure(
+                callID: callID,
+                status: .invalidCallID,
+                message: "Call ID must be non-zero"
+            )
+            return
+        }
+        guard let commandChannel = runtimeCommandChannel.withLock({ $0 }) else {
+            completion.complete(callID: callID, status: .success, payload: [])
+            return
+        }
+        commandChannel.shutdown(callID: callID)
     }
 
     public static func runScheduledTask(taskID: UInt32) {

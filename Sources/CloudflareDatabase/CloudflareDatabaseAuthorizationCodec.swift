@@ -1,6 +1,6 @@
 import DatabaseKit
 import DatabaseTypes
-@_spi(DatabaseWireRuntime) import DatabaseWire
+@_spi(DatabaseOperations) import DatabaseWire
 
 /// Canonical host-only encoding for an already authenticated principal.
 ///

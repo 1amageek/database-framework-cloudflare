@@ -1,9 +1,9 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
-import DatabaseWireRuntime
+import DatabaseOperations
 
 /// Application-owned composition root for one compiled database runtime.
-public protocol CloudflareDatabaseApplication: DatabaseApplication {
+public protocol CloudflareDatabaseOperationApplication: DatabaseOperationApplication {
     /// Stable storage partition hosted by the Durable Object instance.
     var partitionIdentity: StoragePartitionIdentity { get }
 

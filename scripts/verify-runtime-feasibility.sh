@@ -145,7 +145,16 @@ for required_product in \
     DatabaseMath.o \
     DatabaseEngine.o \
     DatabaseRuntime.o \
-    DatabaseWireRuntime.o \
+    DatabaseOperationCore.o \
+    DatabaseCommandOperations.o \
+    DatabaseQueryOperations.o \
+    DatabaseMutationOperations.o \
+    DatabaseGraphOperations.o \
+    DatabaseJobRuntime.o \
+    DatabaseSchemaOperations.o \
+    DatabaseMaintenanceOperations.o \
+    DatabaseOperations.o \
+    DatabaseWireAdapter.o \
     CloudflareDatabase.o
 do
     if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
@@ -156,8 +165,16 @@ done
 
 if runtime_trait_is_enabled MultipleBases; then
     runtime_multiple_bases=1
+    if ! grep -q "/DatabaseAdministrationOperations.o$" "$reactor_link_inputs"; then
+        echo "The Embedded reactor is missing MultipleBases administration operations" >&2
+        exit 1
+    fi
 else
     runtime_multiple_bases=0
+    if grep -q "/DatabaseAdministrationOperations.o$" "$reactor_link_inputs"; then
+        echo "The Embedded reactor links MultipleBases administration operations without the trait" >&2
+        exit 1
+    fi
 fi
 if runtime_trait_is_enabled GraphIndexes; then
     runtime_graph_indexes=1

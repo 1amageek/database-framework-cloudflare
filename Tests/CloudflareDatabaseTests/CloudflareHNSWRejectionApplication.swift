@@ -5,13 +5,13 @@ import CloudflareDurableObjectStorageWire
 import DatabaseEngine
 import DatabaseKit
 import DatabaseRuntime
-import DatabaseWireRuntime
+import DatabaseOperations
 import DatabaseFoundation
 import StorageKitSystemClock
 import VectorIndex
 
 final class CloudflareHNSWRejectionApplication:
-    CloudflareDatabaseApplication {
+    CloudflareDatabaseOperationApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
     let storageLayout: CloudflareDatabaseStorageLayout
@@ -56,9 +56,9 @@ final class CloudflareHNSWRejectionApplication:
         )
     }
 
-    func makeRuntimeConfiguration(
+    func makeOperationConfiguration(
         for container: DBContainer
-    ) async throws -> DatabaseOperationRuntimeConfiguration {
+    ) async throws -> DatabaseOperationConfiguration {
         _ = container
         throw RuntimeVerificationError.unexpectedServiceOperation
     }

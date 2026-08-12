@@ -30,9 +30,9 @@
 - Run the Native package tests with the pinned `org.swift.64202607231a`
   toolchain through `build-for-testing` and `test-without-building`. Inject the
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
-  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 32 passed
+  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 36 passed
   tests with zero failures, skips, expected failures, or runtime warnings.
-- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 121
+- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 122
   passed TypeScript tests with zero failures, cancellations, skips, or todos.
 - Run `scripts/verify-runtime-feasibility.sh` with the fixed
   `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. The gate

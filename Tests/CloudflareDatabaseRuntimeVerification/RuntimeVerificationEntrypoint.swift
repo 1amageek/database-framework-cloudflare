@@ -61,6 +61,12 @@ func runDatabaseAlarm(callID: UInt32) {
     runtimeEntrypoint.alarm(callID: callID)
 }
 
+@_expose(wasm, "database_shutdown")
+@_cdecl("database_shutdown")
+func shutdownDatabaseRuntime(callID: UInt32) {
+    runtimeEntrypoint.shutdown(callID: callID)
+}
+
 @_expose(wasm, "database_executor_run")
 @_cdecl("database_executor_run")
 func runScheduledDatabaseTask(taskID: UInt32) {

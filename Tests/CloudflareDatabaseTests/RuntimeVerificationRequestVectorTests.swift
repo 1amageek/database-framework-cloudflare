@@ -48,7 +48,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "capabilitiesDescribe",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.capabilitiesDescribe,
+                    DatabaseOperationCatalog.capabilitiesDescribe,
                     requestID: 60,
                     target: .database,
                     metadata: OperationRequestMetadata(),
@@ -58,7 +58,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "schemaDescribe",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.schemaDescribe,
+                    DatabaseOperationCatalog.schemaDescribe,
                     requestID: 61,
                     target: .database,
                     metadata: OperationRequestMetadata(),
@@ -71,7 +71,7 @@ struct RuntimeVerificationRequestVectorTests {
                 (
                     "baseCreate",
                     try DatabaseWireEncoder().encodeRequest(
-                        DatabaseOperations.baseExecute,
+                        DatabaseOperationCatalog.baseExecute,
                         requestID: 65,
                         target: .database,
                         metadata: OperationRequestMetadata(
@@ -102,7 +102,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "mutationExecute",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.mutationExecute,
+                    DatabaseOperationCatalog.mutationExecute,
                     requestID: 62,
                     target: target,
                     metadata: OperationRequestMetadata(
@@ -131,7 +131,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "queryExecute",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.queryExecute,
+                    DatabaseOperationCatalog.queryExecute,
                     requestID: 63,
                     target: target,
                     metadata: OperationRequestMetadata(),
@@ -147,7 +147,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "queryAsk",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.queryExecute,
+                    DatabaseOperationCatalog.queryExecute,
                     requestID: 64,
                     target: target,
                     metadata: OperationRequestMetadata(),
@@ -164,7 +164,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorMutationExecute",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.mutationExecute,
+                    DatabaseOperationCatalog.mutationExecute,
                     requestID: 66,
                     target: target,
                     metadata: OperationRequestMetadata(
@@ -178,7 +178,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorIVFRebuild",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.maintenanceExecute,
+                    DatabaseOperationCatalog.maintenanceExecute,
                     requestID: 67,
                     target: target,
                     metadata: OperationRequestMetadata(
@@ -193,7 +193,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorPQRebuild",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.maintenanceExecute,
+                    DatabaseOperationCatalog.maintenanceExecute,
                     requestID: 68,
                     target: target,
                     metadata: OperationRequestMetadata(
@@ -208,7 +208,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorIVFQuery",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.queryExecute,
+                    DatabaseOperationCatalog.queryExecute,
                     requestID: 69,
                     target: target,
                     metadata: OperationRequestMetadata(),
@@ -221,7 +221,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorPQQuery",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.queryExecute,
+                    DatabaseOperationCatalog.queryExecute,
                     requestID: 70,
                     target: target,
                     metadata: OperationRequestMetadata(),
@@ -234,7 +234,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorFlatQuery",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.queryExecute,
+                    DatabaseOperationCatalog.queryExecute,
                     requestID: 71,
                     target: target,
                     metadata: OperationRequestMetadata(),
@@ -247,7 +247,7 @@ struct RuntimeVerificationRequestVectorTests {
             (
                 "vectorDelete",
                 try DatabaseWireEncoder().encodeRequest(
-                    DatabaseOperations.mutationExecute,
+                    DatabaseOperationCatalog.mutationExecute,
                     requestID: 72,
                     target: target,
                     metadata: OperationRequestMetadata(

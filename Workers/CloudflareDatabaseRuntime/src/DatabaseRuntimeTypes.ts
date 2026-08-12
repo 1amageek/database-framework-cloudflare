@@ -13,6 +13,7 @@ export type DatabaseRuntimeEndpoints = {
     requestByteCount: number
   ): void;
   alarm(callID: number): void;
+  shutdown(callID: number): void;
   runScheduledTask(taskID: number): void;
   resumeClockWait(waitID: number): void;
   addressSpace: WebAssembly.Memory;
