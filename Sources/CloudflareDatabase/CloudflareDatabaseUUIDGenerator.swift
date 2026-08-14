@@ -1,5 +1,6 @@
 #if arch(wasm32)
 import DatabaseEngine
+import DatabaseServerRuntime
 import DatabaseTypes
 
 @_extern(wasm, module: "database_random", name: "random_u64")

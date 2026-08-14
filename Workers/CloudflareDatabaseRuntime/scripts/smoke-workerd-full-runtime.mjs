@@ -240,7 +240,10 @@ function verifySuccessResponse(response, request) {
     Uint8Array.from(request).buffer
   );
   assert.deepEqual([...response.subarray(0, 4)], [0x44, 0x42, 0x57, 0x52]);
-  assert.equal(responseView.getUint16(4, true), 1);
+  assert.equal(
+    responseView.getUint16(4, true),
+    requestView.getUint16(4, true)
+  );
   assert.equal(responseView.getUint8(6), 2);
   assert.equal(responseView.getBigUint64(7, true), requestView.getBigUint64(7, true));
   assert.equal(responseView.getUint16(15, true), requestView.getUint16(15, true));
@@ -279,11 +282,16 @@ function assertBooleanResponse(response, expectedValue) {
       "boolean response is truncated"
     );
   };
-  requireBytes(4);
+  requireBytes(2);
   assert.equal(payload.getUint8(offset), 2);
   offset += 1;
   assert.equal(payload.getUint8(offset), expectedValue ? 1 : 0);
   offset += 1;
+  if (!includesMultipleBases) {
+    assert.equal(offset, payload.byteLength, "boolean response has trailing bytes");
+    return;
+  }
+  requireBytes(2);
   assert.equal(
     payload.getUint8(offset),
     0,

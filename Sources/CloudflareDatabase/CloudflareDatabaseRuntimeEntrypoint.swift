@@ -2,7 +2,7 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseKit
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseTypes
 import Synchronization
 
@@ -11,7 +11,9 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
     private let application: AnyDatabaseOperationApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     private let storageLayout: CloudflareDatabaseStorageLayout
+    #endif
     private let jobAuthorizationProvider:
         AnyCloudflareDatabaseJobAuthorizationProvider?
     private let completion: CloudflareDatabaseCompletionChannel
@@ -68,7 +70,9 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         self.application = AnyDatabaseOperationApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
+        #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
         self.storageLayout = application.storageLayout
+        #endif
         self.jobAuthorizationProvider = application.jobAuthorizationProvider
         self.completion = completion
         self.limits = CloudflareDatabaseOperationLimits(
@@ -131,6 +135,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
                 if let channel {
                     return channel
                 }
+                #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
                 let createdChannel = try CloudflareDatabaseRuntimeCommandChannel(
                     application: application,
                     partitionIdentity: partitionIdentity,
@@ -141,6 +146,17 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
                     limits: limits,
                     storageTransportLimits: storageTransportLimits
                 )
+                #else
+                let createdChannel = try CloudflareDatabaseRuntimeCommandChannel(
+                    application: application,
+                    partitionIdentity: partitionIdentity,
+                    storageLimits: storageLimits,
+                    jobAuthorizationProvider: jobAuthorizationProvider,
+                    completion: completion,
+                    limits: limits,
+                    storageTransportLimits: storageTransportLimits
+                )
+                #endif
                 channel = createdChannel
                 return createdChannel
             }

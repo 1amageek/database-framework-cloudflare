@@ -1,6 +1,6 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
-import DatabaseOperations
+import DatabaseServerRuntime
 
 /// Application-owned composition root for one compiled database runtime.
 public protocol CloudflareDatabaseOperationApplication: DatabaseOperationApplication {
@@ -10,9 +10,10 @@ public protocol CloudflareDatabaseOperationApplication: DatabaseOperationApplica
     /// Storage limits enforced by the platform adapter.
     var storageLimits: CloudflareDurableObjectLimits { get }
 
-    /// Single-domain layout consumed by DatabaseFramework's topology owner.
-    /// MultipleBases builds additionally name the Base placement root.
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+    /// Application-selected storage topology for the optional MultipleBases trait.
     var storageLayout: CloudflareDatabaseStorageLayout { get }
+    #endif
 
     /// Application authentication authority for persistent job revalidation.
     /// Jobs remain unadvertised when this authority is absent.

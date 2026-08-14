@@ -1,4 +1,4 @@
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseWire
 
 actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {
@@ -8,12 +8,14 @@ actor SuspendedCloudflareDatabaseJobService: DatabaseJobService {
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var resumeScheduledWork: CheckedContinuation<Void, Never>?
 
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     nonisolated func baseAdmission(
         for operation: JobOperationIdentifier
     ) throws -> DatabaseBaseAdmissionKind {
         _ = operation
         throw RuntimeVerificationError.unexpectedServiceOperation
     }
+    #endif
 
     func waitUntilScheduledWorkStarts() async {
         guard !hasStartedScheduledWork else {

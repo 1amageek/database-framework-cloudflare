@@ -1,4 +1,4 @@
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseWire
 
 actor RecordingCloudflareDatabaseJobService: DatabaseJobService {
@@ -6,12 +6,14 @@ actor RecordingCloudflareDatabaseJobService: DatabaseJobService {
 
     private var scheduledRunCount = 0
 
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     nonisolated func baseAdmission(
         for operation: JobOperationIdentifier
     ) throws -> DatabaseBaseAdmissionKind {
         _ = operation
         throw RuntimeVerificationError.unexpectedServiceOperation
     }
+    #endif
 
     func runCount() -> Int {
         scheduledRunCount

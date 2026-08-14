@@ -1,18 +1,14 @@
-import DatabaseEngine
 #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+import DatabaseEngine
 import DatabaseKit
-#endif
 
 /// Application-selected logical layout for the single Cloudflare storage domain.
 public struct CloudflareDatabaseStorageLayout: Sendable, Hashable {
-    public let domainID: DatabaseStorageDomain.ID
     public let domainNamespacePath: [String]
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+    public let domainID: DatabaseStorageDomain.ID
     public let placementID: Base.Placement.ID
     public let baseNamespacePath: [String]
-    #endif
 
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     public init(
         domainID: DatabaseStorageDomain.ID,
         domainNamespacePath: [String],
@@ -32,17 +28,5 @@ public struct CloudflareDatabaseStorageLayout: Sendable, Hashable {
         self.placementID = placementID
         self.baseNamespacePath = baseNamespacePath
     }
-    #else
-    public init(
-        domainID: DatabaseStorageDomain.ID,
-        domainNamespacePath: [String]
-    ) throws(CloudflareDatabaseConfigurationError) {
-        guard !domainNamespacePath.isEmpty,
-              domainNamespacePath.allSatisfy({ !$0.isEmpty }) else {
-            throw .invalidStorageNamespacePath
-        }
-        self.domainID = domainID
-        self.domainNamespacePath = domainNamespacePath
-    }
-    #endif
 }
+#endif

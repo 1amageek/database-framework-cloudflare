@@ -2,7 +2,7 @@ import CloudflareDatabase
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseEngine
-import DatabaseOperations
+import DatabaseServerRuntime
 
 final class SuspendedRuntimeVerificationApplication:
     CloudflareDatabaseOperationApplication
@@ -46,7 +46,9 @@ final class SuspendedRuntimeVerificationApplication:
 
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits: CloudflareDurableObjectLimits
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     let storageLayout: CloudflareDatabaseStorageLayout
+    #endif
     let jobAuthorizationProvider:
         AnyCloudflareDatabaseJobAuthorizationProvider?
 
@@ -58,7 +60,9 @@ final class SuspendedRuntimeVerificationApplication:
         self.wrapped = wrapped
         self.partitionIdentity = wrapped.partitionIdentity
         self.storageLimits = wrapped.storageLimits
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         self.storageLayout = wrapped.storageLayout
+        #endif
         self.jobAuthorizationProvider = wrapped.jobAuthorizationProvider
     }
 

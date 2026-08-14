@@ -1,5 +1,5 @@
 #if arch(wasm32)
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseTypes
 
 @_extern(wasm, module: "database_alarm", name: "schedule")

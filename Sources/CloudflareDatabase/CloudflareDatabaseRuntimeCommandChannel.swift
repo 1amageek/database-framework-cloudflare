@@ -2,7 +2,7 @@ import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageHostTransport
 import CloudflareDurableObjectStorageWire
 import DatabaseKit
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseTypes
 import Synchronization
 
@@ -47,6 +47,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         self.limits = limits
     }
 
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     init<
         StorageClient: CloudflareDurableObjectStorageClient,
         JobScheduler: DatabaseJobScheduler
@@ -76,6 +77,35 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         self.completion = completion
         self.limits = limits
     }
+    #else
+    init<
+        StorageClient: CloudflareDurableObjectStorageClient,
+        JobScheduler: DatabaseJobScheduler
+    >(
+        application: AnyDatabaseOperationApplication,
+        partitionIdentity: StoragePartitionIdentity,
+        storageLimits: CloudflareDurableObjectLimits,
+        storageClient: StorageClient,
+        jobScheduler: JobScheduler,
+        jobAuthorizationProvider:
+            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
+        completion: CloudflareDatabaseCompletionChannel,
+        limits: CloudflareDatabaseOperationLimits = .default
+    ) {
+        self.runtime = CloudflareDatabaseRuntime(
+            application: application,
+            partitionIdentity: partitionIdentity,
+            storageLimits: storageLimits,
+            storageClient: storageClient,
+            jobScheduler: jobScheduler,
+            jobAuthorizationProvider: jobAuthorizationProvider,
+            completion: completion,
+            limits: limits
+        )
+        self.completion = completion
+        self.limits = limits
+    }
+    #endif
 
 #if arch(wasm32)
     public convenience init<Application: CloudflareDatabaseOperationApplication>(
@@ -100,6 +130,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         )
     }
 
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     convenience init(
         application: AnyDatabaseOperationApplication,
         partitionIdentity: StoragePartitionIdentity,
@@ -130,6 +161,36 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
             limits: limits
         )
     }
+    #else
+    convenience init(
+        application: AnyDatabaseOperationApplication,
+        partitionIdentity: StoragePartitionIdentity,
+        storageLimits: CloudflareDurableObjectLimits,
+        jobAuthorizationProvider:
+            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
+        completion: CloudflareDatabaseCompletionChannel =
+            CloudflareDatabaseCompletionChannel(),
+        limits: CloudflareDatabaseOperationLimits = .default,
+        storageTransportLimits: CloudflareDatabaseStorageTransportLimits = .default
+    ) throws {
+        let transport = try CloudflareDurableObjectStorageHostTransport(
+            maximumRequestBytes: storageTransportLimits.maximumRequestBytes,
+            maximumResponseBytes: storageTransportLimits.maximumResponseBytes
+        )
+        self.init(
+            application: application,
+            partitionIdentity: partitionIdentity,
+            storageLimits: storageLimits,
+            storageClient: CloudflareDurableObjectStorageWireClient(
+                transport: transport
+            ),
+            jobScheduler: CloudflareDatabaseAlarmScheduler(),
+            jobAuthorizationProvider: jobAuthorizationProvider,
+            completion: completion,
+            limits: limits
+        )
+    }
+    #endif
 #endif
 
     public func start(callID: UInt32) {

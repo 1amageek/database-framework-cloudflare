@@ -2,13 +2,12 @@ import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
 import DatabaseEngine
 #if !arch(wasm32)
-import DatabaseFoundation
+import DatabaseServerFoundation
 #endif
 import DatabaseKit
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseTypes
 import DatabaseWire
-import DatabaseWireAdapter
 
 /// Persistent, single-entry database runtime owned by one Durable Object.
 public actor CloudflareDatabaseRuntime {
@@ -27,7 +26,9 @@ public actor CloudflareDatabaseRuntime {
     private let application: AnyDatabaseOperationApplication
     private let partitionIdentity: StoragePartitionIdentity
     private let storageLimits: CloudflareDurableObjectLimits
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     private let storageLayout: CloudflareDatabaseStorageLayout
+    #endif
     private let storageClient: CloudflareDurableObjectStorageClientComposition
     private let jobScheduler: AnyDatabaseJobScheduler
     private let jobAuthorizationProvider:
@@ -59,7 +60,9 @@ public actor CloudflareDatabaseRuntime {
         self.application = AnyDatabaseOperationApplication(application)
         self.partitionIdentity = application.partitionIdentity
         self.storageLimits = application.storageLimits
+        #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
         self.storageLayout = application.storageLayout
+        #endif
         self.storageClient = CloudflareDurableObjectStorageClientComposition(storageClient)
         self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
         self.jobAuthorizationProvider = application.jobAuthorizationProvider
@@ -67,6 +70,7 @@ public actor CloudflareDatabaseRuntime {
         self.limits = limits
     }
 
+    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
     init<
         StorageClient: CloudflareDurableObjectStorageClient,
         JobScheduler: DatabaseJobScheduler
@@ -94,6 +98,33 @@ public actor CloudflareDatabaseRuntime {
         self.completion = completion
         self.limits = limits
     }
+    #else
+    init<
+        StorageClient: CloudflareDurableObjectStorageClient,
+        JobScheduler: DatabaseJobScheduler
+    >(
+        application: AnyDatabaseOperationApplication,
+        partitionIdentity: StoragePartitionIdentity,
+        storageLimits: CloudflareDurableObjectLimits,
+        storageClient: StorageClient,
+        jobScheduler: JobScheduler,
+        jobAuthorizationProvider:
+            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
+        completion: CloudflareDatabaseCompletionChannel,
+        limits: CloudflareDatabaseOperationLimits = .default
+    ) {
+        self.application = application
+        self.partitionIdentity = partitionIdentity
+        self.storageLimits = storageLimits
+        self.storageClient = CloudflareDurableObjectStorageClientComposition(
+            storageClient
+        )
+        self.jobScheduler = AnyDatabaseJobScheduler(jobScheduler)
+        self.jobAuthorizationProvider = jobAuthorizationProvider
+        self.completion = completion
+        self.limits = limits
+    }
+    #endif
 
     /// Bootstraps the StorageKit engine, application container, and operation runtime.
     public func start(callID: UInt32) async {
@@ -156,9 +187,9 @@ public actor CloudflareDatabaseRuntime {
                     monotonicClock: CloudflareDatabaseMonotonicClock()
                 )
             )
+            #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
             let storageTopology: DatabaseStorageTopology
             do {
-                #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
                 storageTopology = try DatabaseStorageTopology(
                     controlDomainID: storageLayout.domainID,
                     domains: [
@@ -177,16 +208,6 @@ public actor CloudflareDatabaseRuntime {
                     ],
                     defaultPlacementID: storageLayout.placementID
                 )
-                #else
-                let controlDomain = try DatabaseStorageDomain(
-                    id: storageLayout.domainID,
-                    namespacePath: storageLayout.domainNamespacePath,
-                    storageEngine: storageEngine
-                )
-                storageTopology = DatabaseStorageTopology(
-                    controlDomain: controlDomain
-                )
-                #endif
             } catch {
                 // Topology construction has not transferred engine ownership
                 // to DBContainer, so this host remains the authoritative owner.
@@ -199,6 +220,14 @@ public actor CloudflareDatabaseRuntime {
             let container = try await definition.open(
                 storageTopology: storageTopology
             )
+            #else
+            // The Durable Object already identifies one isolated database.
+            // The trait-free runtime transfers its single engine directly and
+            // carries no Base topology or placement metadata.
+            let container = try await definition.open(
+                storageEngine: storageEngine
+            )
+            #endif
             let configuration: DatabaseOperationConfiguration
             do {
                 configuration = try await application.makeOperationConfiguration(
@@ -487,7 +516,7 @@ public actor CloudflareDatabaseRuntime {
                 status: .cancelled,
                 message: "Database invocation was cancelled"
             )
-        } catch DatabaseWireAdapterError.invalidRequestFrame {
+        } catch DatabaseServerFrameError.invalidRequestFrame {
             fail(
                 callID: invocation.callID,
                 status: .invalidRequestFrame,

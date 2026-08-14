@@ -8,6 +8,14 @@ import Testing
 
 @Suite("Cloudflare database runtime", .serialized)
 struct CloudflareDatabaseRuntimeTests {
+    private enum TestOperationTarget {
+        case database
+
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        case base(Base.ID)
+        #endif
+    }
+
     private var authorization: AuthorizationContext {
         .authenticated(
             Principal(
@@ -132,7 +140,7 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.start(callID: 1)
         #expect(completion.completion(callID: 1)?.status == .success)
 
-        let request = try DatabaseWireEncoder().encodeRequest(
+        let request = try encodeRequest(
             DatabaseOperationCatalog.capabilitiesDescribe,
             requestID: 42,
             target: .database,
@@ -176,7 +184,7 @@ struct CloudflareDatabaseRuntimeTests {
                 completion: completion
             )
         )
-        let request = try DatabaseWireEncoder().encodeRequest(
+        let request = try encodeRequest(
             DatabaseOperationCatalog.capabilitiesDescribe,
             requestID: 4_201,
             target: .database,
@@ -280,9 +288,9 @@ struct CloudflareDatabaseRuntimeTests {
         }
         await runtime.alarm(callID: 601)
         #expect(completion.completion(callID: 601)?.status == .success)
-        let dataTarget = DatabaseOperationTarget.base(baseID)
+        let dataTarget = TestOperationTarget.base(baseID)
         #else
-        let dataTarget = DatabaseOperationTarget.database
+        let dataTarget = TestOperationTarget.database
         #endif
 
         let schema = try await invoke(
@@ -482,7 +490,7 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.shutdown(callID: 71)
         #expect(completion.completion(callID: 71)?.status == .success)
 
-        let request = try DatabaseWireEncoder().encodeRequest(
+        let request = try encodeRequest(
             DatabaseOperationCatalog.capabilitiesDescribe,
             requestID: 72,
             target: .database,
@@ -524,7 +532,7 @@ struct CloudflareDatabaseRuntimeTests {
 
         #expect(completion.completion(callID: 24)?.status == .invalidRequestFrame)
 
-        let validRequest = try DatabaseWireEncoder().encodeRequest(
+        let validRequest = try encodeRequest(
             DatabaseOperationCatalog.capabilitiesDescribe,
             requestID: 25,
             target: .database,
@@ -646,7 +654,7 @@ struct CloudflareDatabaseRuntimeTests {
         }
         await jobService.waitUntilScheduledWorkStarts()
 
-        let request = try DatabaseWireEncoder().encodeRequest(
+        let request = try encodeRequest(
             DatabaseOperationCatalog.capabilitiesDescribe,
             requestID: 52,
             target: .database,
@@ -670,7 +678,7 @@ struct CloudflareDatabaseRuntimeTests {
 
     private func invoke<Request: Sendable, Response: Sendable>(
         _ operation: DatabaseOperation<Request, Response>,
-        target: DatabaseOperationTarget,
+        target: TestOperationTarget,
         request: Request,
         requestID: UInt64,
         callID: UInt32,
@@ -678,7 +686,7 @@ struct CloudflareDatabaseRuntimeTests {
         runtime: CloudflareDatabaseRuntime,
         completion: RecordingCloudflareDatabaseCompletion
     ) async throws -> Response {
-        let requestBytes = try DatabaseWireEncoder().encodeRequest(
+        let requestBytes = try encodeRequest(
             operation,
             requestID: requestID,
             target: target,
@@ -703,6 +711,39 @@ struct CloudflareDatabaseRuntimeTests {
         case .failure(let error):
             throw error
         }
+    }
+
+    private func encodeRequest<Request: Sendable, Response: Sendable>(
+        _ operation: DatabaseOperation<Request, Response>,
+        requestID: UInt64,
+        target: TestOperationTarget,
+        metadata: OperationRequestMetadata,
+        request: Request
+    ) throws -> ByteString {
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        let wireTarget: DatabaseOperationTarget
+        switch target {
+        case .database:
+            wireTarget = .database
+        case .base(let baseID):
+            wireTarget = .base(baseID)
+        }
+        return try DatabaseWireEncoder().encodeRequest(
+            operation,
+            requestID: requestID,
+            target: wireTarget,
+            metadata: metadata,
+            request: request
+        )
+        #else
+        _ = target
+        return try DatabaseWireEncoder().encodeRequest(
+            operation,
+            requestID: requestID,
+            metadata: metadata,
+            request: request
+        )
+        #endif
     }
 
     private func string(from bytes: ByteString) -> String {

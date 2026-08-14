@@ -1,4 +1,4 @@
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseWire
 
 struct ScheduledWorkFailureJobService: DatabaseJobService {
@@ -11,12 +11,14 @@ struct ScheduledWorkFailureJobService: DatabaseJobService {
 
     let failure: Failure
 
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     func baseAdmission(
         for operation: JobOperationIdentifier
     ) throws -> DatabaseBaseAdmissionKind {
         _ = operation
         throw RuntimeVerificationError.unexpectedServiceOperation
     }
+    #endif
 
     func start(
         _ request: JobStartOperation.Request,

@@ -6,6 +6,14 @@ import Testing
 
 @Suite("Runtime verification request vectors")
 struct RuntimeVerificationRequestVectorTests {
+    private enum VerificationTarget {
+        case database
+
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        case base(Base.ID)
+        #endif
+    }
+
     @Test("golden requests are emitted by the canonical Swift encoder")
     func matchesCanonicalEncoder() throws {
         let testDirectory = URL(fileURLWithPath: #filePath)
@@ -13,41 +21,56 @@ struct RuntimeVerificationRequestVectorTests {
         let repositoryDirectory = testDirectory
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        try verifyVectors(
-            at: repositoryDirectory.appending(
-                path: "Protocol/runtime-verification-requests-standard-v1.json"
-            ),
-            expected: expectedRequests(
-                target: .database,
-                includesBaseCreate: false
-            )
-        )
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         let baseID = try Base.ID("runtime-verification")
-        try verifyVectors(
-            at: repositoryDirectory.appending(
-                path:
-                    "Protocol/runtime-verification-requests-multiple-bases-v1.json"
-            ),
-            expected: expectedRequests(
-                target: .base(baseID),
-                includesBaseCreate: true
-            )
+        let multipleBasesVectorURL = repositoryDirectory.appending(
+            path:
+                "Protocol/runtime-verification-requests-multiple-bases-v1.json"
         )
+        let multipleBasesRequests = try expectedRequests(
+            target: .base(baseID),
+            includesBaseCreate: true
+        )
+        if shouldUpdateVectors {
+            try writeVectors(multipleBasesRequests, to: multipleBasesVectorURL)
+        }
+        try verifyVectors(
+            at: multipleBasesVectorURL,
+            expected: multipleBasesRequests
+        )
+        #else
+        let standardVectorURL = repositoryDirectory.appending(
+            path: "Protocol/runtime-verification-requests-standard-v1.json"
+        )
+        let standardRequests = try expectedRequests(
+            target: .database,
+            includesBaseCreate: false
+        )
+        if shouldUpdateVectors {
+            try writeVectors(standardRequests, to: standardVectorURL)
+        }
+        try verifyVectors(at: standardVectorURL, expected: standardRequests)
+        #endif
+    }
+
+    private var shouldUpdateVectors: Bool {
+        ProcessInfo.processInfo.environment[
+            "DATABASE_UPDATE_RUNTIME_VERIFICATION_VECTORS"
+        ] == "1"
     }
 
     private func expectedRequests(
-        target: DatabaseOperationTarget,
+        target: VerificationTarget,
         includesBaseCreate: Bool
     ) throws -> [(String, ByteString)] {
         let identity = try EntityReference(
             entity: RuntimeVerificationDocument.persistableType,
             id: .string("document-1")
         )
-        let baseID = try Base.ID("runtime-verification")
         var expected: [(String, ByteString)] = [
             (
                 "capabilitiesDescribe",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.capabilitiesDescribe,
                     requestID: 60,
                     target: .database,
@@ -57,7 +80,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "schemaDescribe",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.schemaDescribe,
                     requestID: 61,
                     target: .database,
@@ -66,11 +89,13 @@ struct RuntimeVerificationRequestVectorTests {
                 )
             ),
         ]
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         if includesBaseCreate {
+            let baseID = try Base.ID("runtime-verification")
             expected.append(
                 (
                     "baseCreate",
-                    try DatabaseWireEncoder().encodeRequest(
+                    try encodeRequest(
                         DatabaseOperationCatalog.baseExecute,
                         requestID: 65,
                         target: .database,
@@ -98,10 +123,13 @@ struct RuntimeVerificationRequestVectorTests {
                 )
             )
         }
+        #else
+        precondition(!includesBaseCreate)
+        #endif
         expected.append(contentsOf: [
             (
                 "mutationExecute",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.mutationExecute,
                     requestID: 62,
                     target: target,
@@ -130,7 +158,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "queryExecute",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.queryExecute,
                     requestID: 63,
                     target: target,
@@ -146,7 +174,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "queryAsk",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.queryExecute,
                     requestID: 64,
                     target: target,
@@ -163,7 +191,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorMutationExecute",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.mutationExecute,
                     requestID: 66,
                     target: target,
@@ -177,7 +205,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorIVFRebuild",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.maintenanceExecute,
                     requestID: 67,
                     target: target,
@@ -192,7 +220,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorPQRebuild",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.maintenanceExecute,
                     requestID: 68,
                     target: target,
@@ -207,7 +235,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorIVFQuery",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.queryExecute,
                     requestID: 69,
                     target: target,
@@ -220,7 +248,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorPQQuery",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.queryExecute,
                     requestID: 70,
                     target: target,
@@ -233,7 +261,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorFlatQuery",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.queryExecute,
                     requestID: 71,
                     target: target,
@@ -246,7 +274,7 @@ struct RuntimeVerificationRequestVectorTests {
             ),
             (
                 "vectorDelete",
-                try DatabaseWireEncoder().encodeRequest(
+                try encodeRequest(
                     DatabaseOperationCatalog.mutationExecute,
                     requestID: 72,
                     target: target,
@@ -260,6 +288,39 @@ struct RuntimeVerificationRequestVectorTests {
             ),
         ])
         return expected
+    }
+
+    private func encodeRequest<Request: Sendable, Response: Sendable>(
+        _ operation: DatabaseOperation<Request, Response>,
+        requestID: UInt64,
+        target: VerificationTarget,
+        metadata: OperationRequestMetadata,
+        request: Request
+    ) throws -> ByteString {
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        let wireTarget: DatabaseOperationTarget
+        switch target {
+        case .database:
+            wireTarget = .database
+        case .base(let baseID):
+            wireTarget = .base(baseID)
+        }
+        return try DatabaseWireEncoder().encodeRequest(
+            operation,
+            requestID: requestID,
+            target: wireTarget,
+            metadata: metadata,
+            request: request
+        )
+        #else
+        _ = target
+        return try DatabaseWireEncoder().encodeRequest(
+            operation,
+            requestID: requestID,
+            metadata: metadata,
+            request: request
+        )
+        #endif
     }
 
     private func verifyVectors(
@@ -277,6 +338,25 @@ struct RuntimeVerificationRequestVectorTests {
             #expect(storedBytes.allSatisfy { (0 ... 255).contains($0) })
             #expect(encodedRequest == ByteString(storedBytes.map(UInt8.init)))
         }
+    }
+
+    private func writeVectors(
+        _ vectors: [(String, ByteString)],
+        to vectorURL: URL
+    ) throws {
+        let object = Dictionary(uniqueKeysWithValues: vectors.map { name, bytes in
+            let values = bytes.withUnsafeBytes { buffer in
+                buffer.map(Int.init)
+            }
+            return (name, values)
+        })
+        let data = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        var terminated = data
+        terminated.append(0x0A)
+        try terminated.write(to: vectorURL, options: .atomic)
     }
 
     private func vectorChanges(

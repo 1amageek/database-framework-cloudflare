@@ -16,9 +16,9 @@ flowchart LR
   RPC --> DO["CloudflareDatabaseDurableObject"]
   DO --> Connection["DatabaseRuntimeConnection"]
   Connection --> Runtime["Application database runtime"]
-  Runtime --> Adapter["DatabaseWireAdapter<br/>bounded framing"]
-  Adapter --> Operations["DatabaseOperationInstance<br/>host-independent execution"]
-  Operations --> Storage["StorageKit engine"]
+  Runtime --> Server["DatabaseServerRuntime<br/>frame + operations + jobs"]
+  Server --> Framework["database-framework<br/>DBContainer execution"]
+  Framework --> Storage["StorageKit engine"]
   Storage --> SQLite["Durable Object SQLite"]
 ```
 
@@ -27,21 +27,21 @@ flowchart LR
 | Layer | Responsibility |
 |---|---|
 | `database-types` | Foundation-independent primitive values and immutable byte ownership |
-| `database-kit` | Schema, QueryIR, Base/Security semantics, and canonical DatabaseWire |
-| `database-framework` | DBContainer, graph and SPARQL execution, relationships, ontology, SHACL, indexes, and DatabaseWire operation execution |
+| `database-kit` | Schema, QueryIR, and canonical DatabaseWire; optional Base/Grant semantics only with `MultipleBases` |
+| `database-framework` | DBContainer, transactions, persistence, query/index/graph execution, relationships, ontology, and SHACL semantics |
+| `database-server / DatabaseServerRuntime` | DatabaseWire frame execution, operation handlers, remote commands, durable jobs, and schema administration |
 | `storage-kit` | Durable Object storage client, storage transport contract, and SQLite adapter |
-| `database-framework-cloudflare` Swift | Application composition, full runtime lifecycle, zero-copy request ownership, scheduling, and completion |
+| `database-framework-cloudflare` Swift | Cloudflare application composition, reactor lifecycle, zero-copy request ownership, scheduling, and completion |
 | `database-framework-cloudflare` TypeScript | Durable Object RPC, FIFO admission, runtime services, resource limits, and terminal failure handling |
 
 DatabaseWire and the StorageKit transport remain separate protocols. TypeScript
 does not parse DatabaseWire operations or implement queries, schemas, indexes,
 or transactions.
 
-Cloudflare does not depend on the native `database-server` package. Both hosts
-consume the optional, host-independent `DatabaseOperations` product and the
-bounded `DatabaseWireAdapter` product from
-`database-framework`; native listeners and credentials remain outside the
-Embedded WASM graph.
+Cloudflare depends on the Foundation-independent `DatabaseServerRuntime`
+product, not `DatabaseServerHost` or the `database-server` executable. Native
+listeners, Foundation adapters, credentials, TLS, signals, and process
+lifecycle therefore remain outside the Embedded WASM graph.
 
 ## Swift product
 
@@ -49,8 +49,8 @@ The package exports one library product, `CloudflareDatabase`.
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseOperationApplication` | Supplies the application storage identity, single-domain layout, unopened container definition, and operation configuration |
-| `CloudflareDatabaseStorageLayout` | Names the Cloudflare data domain and, with `MultipleBases`, its Base placement root |
+| `CloudflareDatabaseOperationApplication` | Supplies the Durable Object storage identity, unopened container definition, and operation configuration |
+| `CloudflareDatabaseStorageLayout` | `MultipleBases`-only domain and Base placement layout |
 | `CloudflareDatabaseAuthorizationCodec` | Carries an already authenticated principal across the private host/reactor boundary |
 | `CloudflareDatabaseJobAuthorizationProviding` | Maps authenticated requests to opaque job references and revalidates current authority for every durable job slice |
 | `CloudflareDatabaseRuntime` | Serializes startup, DatabaseWire invocations, and alarm work through one operation runtime |
@@ -66,18 +66,15 @@ runtime artifact: application schema and command registration are compile-time
 dependencies.
 
 Applications pass their schema and migration plan in the unopened container
-definition and declare the one physical Cloudflare domain. The host adapter
-never interprets a Base, Composition, or Grant:
+definition. The default runtime transfers its one Durable Object storage engine
+directly to the framework and uses the engine root. The Durable Object instance
+and `StoragePartitionIdentity` already define the isolated physical database;
+adding another standard namespace would duplicate that boundary. The standard
+application protocol therefore has no `storageLayout` property and compiles no
+Base topology, placement, or persisted Grant path.
 
-```swift
-let storageLayout = try CloudflareDatabaseStorageLayout(
-    domainID: DatabaseStorageDomain.ID("primary"),
-    domainNamespacePath: ["database", "calendar"]
-)
-```
-
-The non-default `MultipleBases` trait adds the placement under which
-DatabaseFramework creates Base roots:
+Only the non-default `MultipleBases` trait adds an explicit physical domain and
+Base placement layout:
 
 ```swift
 let storageLayout = try CloudflareDatabaseStorageLayout(
@@ -88,7 +85,7 @@ let storageLayout = try CloudflareDatabaseStorageLayout(
 )
 ```
 
-Both layouts use the same unopened container definition:
+The unopened container definition remains the same in both compositions:
 
 ```swift
 func makeContainerDefinition() async throws
@@ -105,11 +102,11 @@ func makeContainerDefinition() async throws
 ```
 
 The initializer without `migrationPlan` remains the explicit choice for an
-unversioned schema. The runtime creates exactly one `DatabaseStorageTopology`
-from `storageLayout`; DatabaseFramework owns its database Grant and data root.
-With `MultipleBases`, it additionally owns the Base catalog, Base Grants, and
-Base roots. Cloudflare remains one physical transaction domain. A
-multi-domain Composition belongs to a native server topology.
+unversioned schema. The default runtime transfers one engine directly to
+DBContainer. With `MultipleBases`, it creates exactly one
+`DatabaseStorageTopology` from `storageLayout`; DatabaseFramework then owns the
+Base catalog, persisted Grants, and Base roots. Cloudflare remains one physical
+transaction domain. A multi-domain Composition belongs to a native topology.
 
 ## Runtime feature traits
 
@@ -332,7 +329,10 @@ Database/
 ```
 
 Run the strict native harness. It builds once, injects the pinned snapshot
-testing runtime into the generated `.xctestrun`, and executes without rebuilding:
+testing runtime into the generated `.xctestrun`, and executes without rebuilding.
+The standard graph requires 34 tests; an isolated `MultipleBases` graph uses
+`DATABASE_CLOUDFLARE_EXPECTED_TEST_COUNT=36` and requires 36. Do not share
+DerivedData between those graphs:
 
 ```bash
 scripts/xcode-test-harness
@@ -381,8 +381,9 @@ that unselected index products, including `VectorIndex` and `SwiftHNSW`, are
 absent from the link inputs.
 
 The same fixture executes Flat, IVF, and PQ and rejects HNSW before storage
-engine creation. Native package verification requires all 36 Cloudflare tests,
-and the Worker package requires all 122 TypeScript tests to pass.
+engine creation. Native package verification requires all 34 standard tests
+and all 36 tests in the isolated `MultipleBases` graph. The Worker package
+requires all 122 TypeScript tests to pass.
 
 The gate defaults to `AllRuntimeFeatures`. Set `DATABASE_RUNTIME_TRAITS` to a
 comma-separated trait list for an application-specific artifact:

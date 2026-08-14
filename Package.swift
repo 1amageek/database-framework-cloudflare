@@ -102,6 +102,27 @@ let databaseFrameworkDependencyTraits = Set(
     ),
 ])
 
+let databaseServerDependencyTraits = Set(
+    databaseRuntimeFeatureNames.map {
+        Package.Dependency.Trait.trait(
+            name: $0,
+            condition: .when(traits: [$0])
+        )
+    }
+).union([
+    .trait(
+        name: "MultipleBases",
+        condition: .when(traits: ["MultipleBases"])
+    ),
+])
+
+let databaseKitDependencyTraits: Set<Package.Dependency.Trait> = [
+    .trait(
+        name: "MultipleBases",
+        condition: .when(traits: ["MultipleBases"])
+    ),
+]
+
 let package = Package(
     name: "database-framework-cloudflare",
     platforms: [
@@ -119,12 +140,18 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0812.1",
+            from: "26.0814.0",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
+            url: "https://github.com/1amageek/database-server.git",
+            from: "26.0814.0",
+            traits: databaseServerDependencyTraits
+        ),
+        .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0812.1"
+            from: "26.0814.0",
+            traits: databaseKitDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
@@ -137,11 +164,10 @@ let package = Package(
             dependencies: [
                 "CloudflareDatabaseTaskScheduling",
                 .product(name: "DatabaseEngine", package: "database-framework"),
-                .product(name: "DatabaseOperations", package: "database-framework"),
-                .product(name: "DatabaseWireAdapter", package: "database-framework"),
+                .product(name: "DatabaseServerRuntime", package: "database-server"),
                 .product(
-                    name: "DatabaseFoundation",
-                    package: "database-framework",
+                    name: "DatabaseServerFoundation",
+                    package: "database-server",
                     condition: .when(platforms: hostPlatforms)
                 ),
                 .product(name: "DatabaseWire", package: "database-kit"),
@@ -178,15 +204,15 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
-                .product(name: "DatabaseOperations", package: "database-framework"),
+                .product(name: "DatabaseServerRuntime", package: "database-server"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
                     condition: .when(traits: ["VectorIndexes"])
                 ),
                 .product(
-                    name: "DatabaseFoundation",
-                    package: "database-framework",
+                    name: "DatabaseServerFoundation",
+                    package: "database-server",
                     condition: .when(platforms: hostPlatforms)
                 ),
                 .product(name: "DatabaseTypes", package: "database-types"),
@@ -235,15 +261,15 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
-                .product(name: "DatabaseOperations", package: "database-framework"),
+                .product(name: "DatabaseServerRuntime", package: "database-server"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
                     condition: .when(traits: ["VectorIndexes"])
                 ),
                 .product(
-                    name: "DatabaseFoundation",
-                    package: "database-framework",
+                    name: "DatabaseServerFoundation",
+                    package: "database-server",
                     condition: .when(platforms: hostPlatforms)
                 ),
                 .product(name: "DatabaseWire", package: "database-kit"),

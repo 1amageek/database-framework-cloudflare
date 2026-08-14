@@ -1,4 +1,4 @@
-import DatabaseOperations
+import DatabaseServerRuntime
 import DatabaseWire
 
 struct UnavailableCloudflareDatabaseServices:
@@ -9,12 +9,14 @@ struct UnavailableCloudflareDatabaseServices:
     DatabaseJobService {
     var jobOperations: [JobOperationIdentifier] { [] }
 
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     func baseAdmission(
         for operation: JobOperationIdentifier
     ) throws -> DatabaseBaseAdmissionKind {
         _ = operation
         throw RuntimeVerificationError.unexpectedServiceOperation
     }
+    #endif
 
     func execute(
         _ request: GraphAlgorithmOperation.Request,

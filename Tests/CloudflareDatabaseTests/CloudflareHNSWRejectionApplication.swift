@@ -5,8 +5,8 @@ import CloudflareDurableObjectStorageWire
 import DatabaseEngine
 import DatabaseKit
 import DatabaseRuntime
-import DatabaseOperations
-import DatabaseFoundation
+import DatabaseServerRuntime
+import DatabaseServerFoundation
 import StorageKitSystemClock
 import VectorIndex
 
@@ -14,7 +14,9 @@ final class CloudflareHNSWRejectionApplication:
     CloudflareDatabaseOperationApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     let storageLayout: CloudflareDatabaseStorageLayout
+    #endif
     let jobAuthorizationProvider:
         AnyCloudflareDatabaseJobAuthorizationProvider? = nil
 
@@ -26,9 +28,11 @@ final class CloudflareHNSWRejectionApplication:
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "cloudflare-hnsw-rejection"
         )
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "hnsw-rejection"
         )
+        #endif
         self.indexConfiguration = indexConfiguration
             ?? VectorIndexConfiguration<CloudflareHNSWRejectionDocument>(
                 field: CloudflareHNSWRejectionDocument.fields.embedding,

@@ -328,6 +328,7 @@ async function executeVerifiedRequest(
   }
   verifySuccessResponse(
     response,
+    requestHeader.protocolVersion,
     requestHeader.requestID,
     requestHeader.operation
   );
@@ -336,7 +337,7 @@ async function executeVerifiedRequest(
 
 function readRequestHeader(
   request: Uint8Array
-): { requestID: bigint; operation: number } {
+): { protocolVersion: number; requestID: bigint; operation: number } {
   if (request.byteLength < 17) {
     throw new Error("runtime request vector is shorter than the wire header");
   }
@@ -346,6 +347,7 @@ function readRequestHeader(
     request.byteLength
   );
   return {
+    protocolVersion: bytes.getUint16(4, true),
     requestID: bytes.getBigUint64(7, true),
     operation: bytes.getUint16(15, true),
   };
@@ -353,6 +355,7 @@ function readRequestHeader(
 
 function verifySuccessResponse(
   response: Uint8Array,
+  protocolVersion: number,
   requestID: bigint,
   operation: number
 ): void {
@@ -370,7 +373,7 @@ function verifySuccessResponse(
       throw new Error("runtime response has invalid DatabaseWire magic");
     }
   }
-  if (bytes.getUint16(4, true) !== 1
+  if (bytes.getUint16(4, true) !== protocolVersion
       || bytes.getUint8(6) !== 2
       || bytes.getBigUint64(7, true) !== requestID
       || bytes.getUint16(15, true) !== operation
@@ -434,7 +437,7 @@ function verifyBooleanResponse(
       throw new Error("runtime boolean response is truncated");
     }
   };
-  requireBytes(4);
+  requireBytes(2);
   if (payload.getUint8(offset) !== 2) {
     throw new Error("runtime response is not a boolean result");
   }
@@ -443,6 +446,13 @@ function verifyBooleanResponse(
     throw new Error("runtime boolean response has the wrong value");
   }
   offset += 1;
+  if (!includesMultipleBases) {
+    if (offset !== payload.byteLength) {
+      throw new Error("runtime boolean response has trailing bytes");
+    }
+    return;
+  }
+  requireBytes(2);
   if (payload.getUint8(offset) !== 0) {
     throw new Error("Base-local boolean response unexpectedly has provenance");
   }

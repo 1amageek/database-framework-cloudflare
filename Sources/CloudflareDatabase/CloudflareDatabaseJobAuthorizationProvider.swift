@@ -1,5 +1,5 @@
 import DatabaseKit
-import DatabaseOperations
+import DatabaseServerRuntime
 
 /// Application-owned authentication authority used by durable database jobs.
 ///

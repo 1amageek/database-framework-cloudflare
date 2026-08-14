@@ -1,7 +1,7 @@
 #if CLOUDFLARE_DATABASE_VECTOR_INDEXES
 import VectorIndex
 #endif
-import DatabaseOperations
+import DatabaseServerRuntime
 
 enum CloudflareDatabaseHostingCapabilityValidator {
     static func validate(

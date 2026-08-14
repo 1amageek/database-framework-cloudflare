@@ -4,22 +4,22 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
-import DatabaseOperations
+import DatabaseServerRuntime
 import StorageKit
 #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
 import DatabaseTypes
 import VectorIndex
 #endif
 #if !arch(wasm32)
-import DatabaseFoundation
+import DatabaseServerFoundation
 import StorageKitSystemClock
 #endif
 
 final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplication {
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
-    let storageLayout: CloudflareDatabaseStorageLayout
     #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+    let storageLayout: CloudflareDatabaseStorageLayout
     let jobAuthorizationProvider:
         AnyCloudflareDatabaseJobAuthorizationProvider? =
             AnyCloudflareDatabaseJobAuthorizationProvider(
@@ -40,11 +40,6 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
             domainNamespacePath: ["database", "runtime-verification"],
             placementID: Base.Placement.ID("default"),
             baseNamespacePath: ["bases"]
-        )
-        #else
-        storageLayout = try CloudflareDatabaseStorageLayout(
-            domainID: DatabaseStorageDomain.ID("primary"),
-            domainNamespacePath: ["database", "runtime-verification"]
         )
         #endif
     }

@@ -4,8 +4,8 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import DatabaseEngine
 import DatabaseRuntime
-import DatabaseOperations
-import DatabaseFoundation
+import DatabaseServerRuntime
+import DatabaseServerFoundation
 import StorageKitSystemClock
 
 final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplication {
@@ -16,7 +16,9 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
 
     let partitionIdentity: StoragePartitionIdentity
     let storageLimits = CloudflareDurableObjectLimits.default
+    #if CLOUDFLARE_TEST_MULTIPLE_BASES
     let storageLayout: CloudflareDatabaseStorageLayout
+    #endif
     let jobAuthorizationProvider:
         AnyCloudflareDatabaseJobAuthorizationProvider?
     private let jobServiceSelection: JobServiceSelection
@@ -25,9 +27,11 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "runtime-verification"
         )
+        #endif
         self.jobAuthorizationProvider = nil
         self.jobServiceSelection = .injected(
             AnyDatabaseJobService(
@@ -41,9 +45,11 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "runtime-verification"
         )
+        #endif
         self.jobAuthorizationProvider =
             AnyCloudflareDatabaseJobAuthorizationProvider(
                 RuntimeVerificationJobAuthorizationProvider()
@@ -55,9 +61,11 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
         partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
         storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "runtime-verification"
         )
+        #endif
         self.jobAuthorizationProvider = nil
         self.jobServiceSelection = .injected(
             AnyDatabaseJobService(jobService)

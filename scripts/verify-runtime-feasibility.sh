@@ -153,8 +153,7 @@ for required_product in \
     DatabaseJobRuntime.o \
     DatabaseSchemaOperations.o \
     DatabaseMaintenanceOperations.o \
-    DatabaseOperations.o \
-    DatabaseWireAdapter.o \
+    DatabaseServerRuntime.o \
     CloudflareDatabase.o
 do
     if ! grep -q "/$required_product$" "$reactor_link_inputs"; then

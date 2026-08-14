@@ -4,7 +4,13 @@
 
 - This package hosts one application-specific full database-framework runtime as a persistent WASI reactor inside a Database Durable Object.
 - TypeScript owns Durable Object lifecycle, FIFO admission, typed RPC byte transfer, completion correlation, limits, and the synchronous storage host ABI.
-- Swift owns all database, schema, query, graph, transaction, index, migration, maintenance, and job semantics. TypeScript must not duplicate them.
+- Swift composes `DatabaseServerRuntime` with database-framework execution.
+  Server frame/operation/job semantics belong to `database-server`; database,
+  query, graph, transaction, index, and migration semantics belong to
+  database-framework. TypeScript must not duplicate either layer.
+- This package depends on `DatabaseServerRuntime` only. It must not link
+  `DatabaseServerHost`, Hummingbird, native TLS, credential files, signals, or
+  process lifecycle.
 
 ## Naming
 
@@ -30,8 +36,11 @@
 - Run the Native package tests with the pinned `org.swift.64202607231a`
   toolchain through `build-for-testing` and `test-without-building`. Inject the
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
-  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Require exactly 36 passed
-  tests with zero failures, skips, expected failures, or runtime warnings.
+  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. The standard graph requires
+  exactly 34 passed tests. An isolated `MultipleBases` graph uses
+  `DATABASE_CLOUDFLARE_EXPECTED_TEST_COUNT=36` and requires exactly 36 passed
+  tests. Both runs require zero failures, skips, expected failures, or runtime
+  warnings. Never reuse DerivedData across the two trait graphs.
 - Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 122
   passed TypeScript tests with zero failures, cancellations, skips, or todos.
 - Run `scripts/verify-runtime-feasibility.sh` with the fixed
