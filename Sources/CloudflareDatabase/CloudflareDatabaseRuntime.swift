@@ -8,6 +8,7 @@ import DatabaseKit
 import DatabaseServerRuntime
 import DatabaseTypes
 import DatabaseWire
+import StorageKit
 
 /// Persistent, single-entry database runtime owned by one Durable Object.
 public actor CloudflareDatabaseRuntime {
@@ -225,7 +226,8 @@ public actor CloudflareDatabaseRuntime {
             // The trait-free runtime transfers its single engine directly and
             // carries no Base topology or placement metadata.
             let container = try await definition.open(
-                storageEngine: storageEngine
+                storageEngine: storageEngine,
+                databaseRoot: Subspace()
             )
             #endif
             let configuration: DatabaseOperationConfiguration
