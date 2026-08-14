@@ -428,3 +428,7 @@ Workers/
 Docs/
 └── ADR-0001-full-runtime-reactor-abi.md
 ```
+
+## License
+
+Licensed under the [MIT License](LICENSE).
