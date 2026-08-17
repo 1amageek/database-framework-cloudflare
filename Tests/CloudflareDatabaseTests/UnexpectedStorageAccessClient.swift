@@ -57,7 +57,7 @@ actor UnexpectedStorageAccessClient: CloudflareDurableObjectStorageClient {
 
     private func recordUnexpectedAccess() throws -> Never {
         accessCount += 1
-        throw RuntimeVerificationError.unexpectedServiceOperation
+        throw RuntimeVerificationError.unexpectedStorageAccess
     }
 }
 #endif

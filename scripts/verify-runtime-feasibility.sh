@@ -106,7 +106,7 @@ if ! command -v wasm-opt >/dev/null 2>&1; then
     exit 1
 fi
 if [ ! -x "$repository_root/Workers/CloudflareDatabaseRuntime/node_modules/.bin/tsx" ]; then
-    echo "Run npm install in Workers/CloudflareDatabaseRuntime first" >&2
+    echo "Run npm ci in Workers/CloudflareDatabaseRuntime first" >&2
     exit 1
 fi
 
@@ -137,7 +137,6 @@ for required_product in \
     DatabaseTypes.o \
     DatabaseKit.o \
     DatabaseWire.o \
-    QueryAST.o \
     StorageKit.o \
     CloudflareDurableObjectStorage.o \
     CloudflareDurableObjectStorageWire.o \
@@ -145,15 +144,6 @@ for required_product in \
     DatabaseMath.o \
     DatabaseEngine.o \
     DatabaseRuntime.o \
-    DatabaseOperationCore.o \
-    DatabaseCommandOperations.o \
-    DatabaseQueryOperations.o \
-    DatabaseMutationOperations.o \
-    DatabaseGraphOperations.o \
-    DatabaseJobRuntime.o \
-    DatabaseSchemaOperations.o \
-    DatabaseMaintenanceOperations.o \
-    DatabaseServerRuntime.o \
     CloudflareDatabase.o
 do
     if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
@@ -164,16 +154,8 @@ done
 
 if runtime_trait_is_enabled MultipleBases; then
     runtime_multiple_bases=1
-    if ! grep -q "/DatabaseAdministrationOperations.o$" "$reactor_link_inputs"; then
-        echo "The Embedded reactor is missing MultipleBases administration operations" >&2
-        exit 1
-    fi
 else
     runtime_multiple_bases=0
-    if grep -q "/DatabaseAdministrationOperations.o$" "$reactor_link_inputs"; then
-        echo "The Embedded reactor links MultipleBases administration operations without the trait" >&2
-        exit 1
-    fi
 fi
 if runtime_trait_is_enabled GraphIndexes; then
     runtime_graph_indexes=1
@@ -266,6 +248,19 @@ for forbidden_product in \
     StorageKitFoundation.o \
     StorageKitSystemClock.o \
     DatabaseFoundation.o \
+    DatabaseOperationCore.o \
+    DatabaseCommandOperations.o \
+    DatabaseQueryOperations.o \
+    DatabaseMutationOperations.o \
+    DatabaseGraphOperations.o \
+    DatabaseJobRuntime.o \
+    DatabaseSchemaOperations.o \
+    DatabaseMaintenanceOperations.o \
+    DatabaseAdministrationOperations.o \
+    DatabaseServerRuntime.o \
+    DatabaseServerFoundation.o \
+    DatabaseServerHost.o \
+    QueryAST.o \
     FDBStorage.o \
     SQLiteStorage.o \
     PostgreSQLStorage.o

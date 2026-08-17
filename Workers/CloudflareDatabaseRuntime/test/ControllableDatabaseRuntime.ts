@@ -1,5 +1,6 @@
 import type { DatabaseRuntimeInstance } from "../src/DatabaseRuntimeInstance";
 import { databaseCompletionStatus } from "../src/DatabaseCompletionStatus";
+import { databaseRuntimeABIVersion } from "../src/DatabaseRuntimeABIVersion";
 import type {
   DatabaseRuntimeInstantiator,
   DatabaseRuntimeInstantiationOptions,
@@ -8,6 +9,7 @@ import type {
 export type ControllableDatabaseRuntimeBehavior =
   | { kind: "echo" }
   | { kind: "failure"; status: number; message: string }
+  | { kind: "failureOnceThenEcho"; status: number; message: string }
   | { kind: "alarmFailureOnce"; status: number; message: string }
   | { kind: "startupFailure"; status: number; message: string }
   | { kind: "failureBytes"; status: number; bytes: number[] }
@@ -130,6 +132,7 @@ export function controllableDatabaseRuntimeInstantiator(
 
     const runtimeEndpoints: WebAssembly.Exports = {
       memory: runtimeAddressSpace,
+      database_abi_version: () => databaseRuntimeABIVersion,
       database_alloc: (byteCount: number) => {
         if (byteCount > 0) {
           invocationPayloadReservationCount += 1;
@@ -183,15 +186,15 @@ export function controllableDatabaseRuntimeInstantiator(
       },
       database_invoke: (
         callID: number,
-        authorizationAddress: number,
-        authorizationByteCount: number,
+        contextAddress: number,
+        contextByteCount: number,
         payloadAddress: number,
         byteCount: number
       ) => {
         invocationPayloadReservationCount = 0;
         borrowRuntimeBytes(
-          authorizationAddress,
-          authorizationByteCount
+          contextAddress,
+          contextByteCount
         );
         lifecycleObserver.didInvoke?.(payloadAddress, byteCount);
         if (behavior.kind === "commandFailure"
@@ -213,8 +216,18 @@ export function controllableDatabaseRuntimeInstantiator(
           return;
         }
         enqueueTask(() => {
+          if (behavior.kind === "failureOnceThenEcho"
+              && invocationCount === 1) {
+            deliverCompletionBytes(
+              callID,
+              behavior.status,
+              new TextEncoder().encode(behavior.message)
+            );
+            return;
+          }
           switch (behavior.kind) {
           case "echo":
+          case "failureOnceThenEcho":
           case "alarmFailureOnce":
           case "hangOnceThenEcho":
           case "startupFailureWithPendingServices":

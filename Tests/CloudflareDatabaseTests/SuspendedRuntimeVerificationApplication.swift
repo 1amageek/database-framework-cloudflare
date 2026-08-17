@@ -1,29 +1,28 @@
 import CloudflareDatabase
-import CloudflareDurableObjectStorage
-import CloudflareDurableObjectStorageWire
-import DatabaseEngine
-import DatabaseServerRuntime
+@_spi(DatabaseExecution) import DatabaseEngine
+import DatabaseTypes
 
 final class SuspendedRuntimeVerificationApplication:
-    CloudflareDatabaseOperationApplication
+    CloudflareDatabaseApplication,
+    Sendable
 {
-    private actor DefinitionGate {
-        private var isRequested = false
+    fileprivate actor Gate {
+        private var wasEntered = false
         private var isReleased = false
-        private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+        private var entryWaiters: [CheckedContinuation<Void, Never>] = []
         private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-        func waitUntilRequested() async {
-            guard !isRequested else { return }
+        func waitUntilEntered() async {
+            guard !wasEntered else { return }
             await withCheckedContinuation { continuation in
-                requestWaiters.append(continuation)
+                entryWaiters.append(continuation)
             }
         }
 
-        func suspendUntilReleased() async {
-            isRequested = true
-            let waiters = requestWaiters
-            requestWaiters.removeAll(keepingCapacity: false)
+        func enterAndWait() async {
+            wasEntered = true
+            let waiters = entryWaiters
+            entryWaiters.removeAll(keepingCapacity: false)
             for waiter in waiters {
                 waiter.resume()
             }
@@ -44,46 +43,104 @@ final class SuspendedRuntimeVerificationApplication:
         }
     }
 
-    let partitionIdentity: StoragePartitionIdentity
-    let storageLimits: CloudflareDurableObjectLimits
-    #if CLOUDFLARE_TEST_MULTIPLE_BASES
-    let storageLayout: CloudflareDatabaseStorageLayout
-    #endif
-    let jobAuthorizationProvider:
-        AnyCloudflareDatabaseJobAuthorizationProvider?
+    fileprivate actor Event {
+        private var hasOccurred = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    private let wrapped: RuntimeVerificationApplication
-    private let gate = DefinitionGate()
+        func wait() async {
+            guard !hasOccurred else { return }
+            await withCheckedContinuation { continuation in
+                waiters.append(continuation)
+            }
+        }
+
+        func signal() {
+            guard !hasOccurred else { return }
+            hasOccurred = true
+            let waiters = waiters
+            self.waiters.removeAll(keepingCapacity: false)
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
+    }
+
+    actor Session: CloudflareDatabaseSession {
+        private let wrapped: RuntimeVerificationSession
+        private let invocationGate: Gate
+        private let shutdownEvent: Event
+
+        fileprivate init(
+            wrapped: RuntimeVerificationSession,
+            invocationGate: Gate,
+            shutdownEvent: Event
+        ) {
+            self.wrapped = wrapped
+            self.invocationGate = invocationGate
+            self.shutdownEvent = shutdownEvent
+        }
+
+        func respond(
+            to invocation: CloudflareDatabaseInvocation
+        ) async throws -> ByteString {
+            if Self.string(from: invocation.request) == "suspend" {
+                await invocationGate.enterAndWait()
+                return ByteString(utf8: "released")
+            }
+            return try await wrapped.respond(to: invocation)
+        }
+
+        func shutdown() async {
+            await wrapped.shutdown()
+            await shutdownEvent.signal()
+        }
+
+        private static func string(from bytes: ByteString) -> String {
+            bytes.withUnsafeBytes { buffer in
+                String(decoding: buffer, as: UTF8.self)
+            }
+        }
+    }
+
+    private let application: RuntimeVerificationApplication
+    private let definitionGate = Gate()
+    private let invocationGate = Gate()
+    private let shutdownEvent = Event()
 
     init() throws {
-        let wrapped = try RuntimeVerificationApplication()
-        self.wrapped = wrapped
-        self.partitionIdentity = wrapped.partitionIdentity
-        self.storageLimits = wrapped.storageLimits
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        self.storageLayout = wrapped.storageLayout
-        #endif
-        self.jobAuthorizationProvider = wrapped.jobAuthorizationProvider
+        self.application = try RuntimeVerificationApplication()
     }
 
     func waitUntilDefinitionIsRequested() async {
-        await gate.waitUntilRequested()
+        await definitionGate.waitUntilEntered()
     }
 
     func releaseDefinition() async {
-        await gate.release()
+        await definitionGate.release()
     }
 
-    func makeContainerDefinition() async throws
-        -> DatabaseContainerDefinition
-    {
-        await gate.suspendUntilReleased()
-        return try await wrapped.makeContainerDefinition()
+    func waitUntilInvocationStarts() async {
+        await invocationGate.waitUntilEntered()
     }
 
-    func makeOperationConfiguration(
-        for container: DBContainer
-    ) async throws -> DatabaseOperationConfiguration {
-        try await wrapped.makeOperationConfiguration(for: container)
+    func releaseInvocation() async {
+        await invocationGate.release()
+    }
+
+    func waitUntilSessionShutdown() async {
+        await shutdownEvent.wait()
+    }
+
+    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
+        await definitionGate.enterAndWait()
+        return try await application.makeDefinition()
+    }
+
+    func makeSession(for container: DBContainer) async throws -> Session {
+        Session(
+            wrapped: try await application.makeSession(for: container),
+            invocationGate: invocationGate,
+            shutdownEvent: shutdownEvent
+        )
     }
 }

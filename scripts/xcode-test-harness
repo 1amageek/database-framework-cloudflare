@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCHEME="database-framework-cloudflare-Package"
 DESTINATION="platform=macOS,arch=arm64"
-EXPECTED_TEST_COUNT="${DATABASE_CLOUDFLARE_EXPECTED_TEST_COUNT:-34}"
+TEST_TRAITS="${DATABASE_CLOUDFLARE_TEST_TRAITS:-}"
 TOOLCHAIN_IDENTIFIER="org.swift.64202607231a"
 BUILD_TIMEOUT_SECONDS="${XCODE_TEST_BUILD_TIMEOUT_SECONDS:-1200}"
 TEST_TIMEOUT_SECONDS="${XCODE_TEST_TIMEOUT_SECONDS:-1200}"
@@ -13,6 +13,37 @@ REQUESTED_WORK_ROOT="${XCODE_TEST_WORK_ROOT:-}"
 REQUESTED_DERIVED_DATA="${XCODE_TEST_DERIVED_DATA_PATH:-}"
 WORK_ROOT=""
 OWNS_WORK_ROOT=false
+
+trait_is_enabled() {
+  local requested_trait="$1"
+  case ",$TEST_TRAITS," in
+    *",$requested_trait,"*)
+      return 0
+      ;;
+  esac
+  if [[ "$requested_trait" != "MultipleBases" ]]; then
+    case ",$TEST_TRAITS," in
+      *",AllRuntimeFeatures,"*)
+        return 0
+        ;;
+    esac
+  fi
+  return 1
+}
+
+trait_literal() {
+  local output="["
+  local separator=""
+  local trait
+  local traits=()
+  IFS=',' read -r -a traits <<<"$TEST_TRAITS"
+  for trait in "${traits[@]}"; do
+    output+="$separator\"$trait\""
+    separator=", "
+  done
+  output+="]"
+  printf '%s\n' "$output"
+}
 
 timeout_command() {
   local seconds="$1"
@@ -108,7 +139,41 @@ summary_number() {
   printf '%s' "$summary" | jq -er ".${key}"
 }
 
-for command in jq xcodebuild xcrun plutil perl rg tee; do
+case "$TEST_TRAITS" in
+  "")
+    ;;
+  ","* | *"," | *",,"* | *[!A-Za-z,]*)
+    echo "error: DATABASE_CLOUDFLARE_TEST_TRAITS must be a comma-separated trait list" >&2
+    exit 2
+    ;;
+esac
+if [[ -n "$TEST_TRAITS" ]]; then
+  for trait in ${TEST_TRAITS//,/ }; do
+    case "$trait" in
+      AllRuntimeFeatures | ScalarIndexes | VectorIndexes | \
+        FullTextIndexes | SpatialIndexes | RankIndexes | \
+        BitmapIndexes | VersionIndexes | PermutedIndexes | \
+        GraphIndexes | AggregationIndexes | LeaderboardIndexes | \
+        Relationships | MultipleBases)
+        ;;
+      *)
+        echo "error: unknown Cloudflare test trait: $trait" >&2
+        exit 2
+        ;;
+    esac
+  done
+fi
+
+default_expected_test_count=18
+if trait_is_enabled MultipleBases; then
+  default_expected_test_count=$((default_expected_test_count + 2))
+fi
+if trait_is_enabled VectorIndexes; then
+  default_expected_test_count=$((default_expected_test_count + 3))
+fi
+EXPECTED_TEST_COUNT="${DATABASE_CLOUDFLARE_EXPECTED_TEST_COUNT:-$default_expected_test_count}"
+
+for command in jq xcodebuild xcrun plutil perl rg rsync tee; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "error: required command not found: $command" >&2
     exit 1
@@ -139,6 +204,7 @@ else
   OWNS_WORK_ROOT=true
 fi
 
+source_root="$WORK_ROOT/source"
 if [[ -n "$REQUESTED_DERIVED_DATA" ]]; then
   case "$REQUESTED_DERIVED_DATA" in
     /*) ;;
@@ -151,7 +217,50 @@ if [[ -n "$REQUESTED_DERIVED_DATA" ]]; then
 else
   derived_data="$WORK_ROOT/DerivedData"
 fi
-mkdir -p "$derived_data" "$RESULT_DIRECTORY"
+mkdir -p "$source_root" "$derived_data" "$RESULT_DIRECTORY"
+rsync -a --delete \
+  --exclude '.git' \
+  --exclude '.build' \
+  --exclude '.swiftpm' \
+  --exclude '*.xcresult' \
+  --exclude 'Workers/CloudflareDatabaseRuntime/node_modules' \
+  "$ROOT_DIR/" "$source_root/"
+if [[ -n "$TEST_TRAITS" ]]; then
+  TEST_TRAIT_LITERAL="$(trait_literal)" perl -0pi -e '
+    my $insertions = s/(\nlet package = Package\()/"\ndatabaseRuntimeTraits.insert(\n    .default(enabledTraits: " . $ENV{TEST_TRAIT_LITERAL} . ")\n)\n\nlet package = Package("/e;
+    die "package declaration was not found\n" unless $insertions == 1;
+  ' "$source_root/Package.swift"
+fi
+if trait_is_enabled MultipleBases; then
+  perl -0pi -e '
+    my $replacements = s{
+      \.trait\(
+        \s*name:\s*"MultipleBases",
+        \s*condition:\s*\.when\(traits:\s*\["MultipleBases"\]\)
+        \s*
+      \)
+    }{.trait(name: "MultipleBases")}gx;
+    die "expected two MultipleBases dependency trait conditions\n"
+      unless $replacements == 2;
+  ' "$source_root/Package.swift"
+fi
+if trait_is_enabled AllRuntimeFeatures; then
+  perl -0pi -e '
+    my $replacements = s{
+      Package\.Dependency\.Trait\.trait\(
+        \s*name:\s*\$0,
+        \s*condition:\s*\.when\(traits:\s*\[\$0\]\)
+        \s*
+      \)
+    }{Package.Dependency.Trait.trait(name: \$0)}gx;
+    die "database-framework feature dependency trait mapping was not found\n"
+      unless $replacements == 1;
+  ' "$source_root/Package.swift"
+fi
+if rg -n '\.package\(path:' "$source_root/Package.swift" >/dev/null; then
+  echo "error: release verification requires URL dependencies" >&2
+  exit 2
+fi
 run_identifier="$(date -u +%Y%m%d-%H%M%S)-$$"
 build_result="$RESULT_DIRECTORY/Build-$run_identifier.xcresult"
 test_result="$RESULT_DIRECTORY/Test-$run_identifier.xcresult"
@@ -160,7 +269,7 @@ test_log="$RESULT_DIRECTORY/Test-$run_identifier.log"
 
 set +e
 (
-  cd "$ROOT_DIR"
+  cd "$source_root"
   timeout_command "$BUILD_TIMEOUT_SECONDS" xcodebuild build-for-testing \
     -scheme "$SCHEME" \
     -destination "$DESTINATION" \
@@ -228,4 +337,5 @@ fi
 
 printf '%s\n' "$summary"
 echo "Cloudflare native tests: $passed_count passed"
+echo "Traits: ${TEST_TRAITS:-none}"
 echo "Result directory: $RESULT_DIRECTORY"

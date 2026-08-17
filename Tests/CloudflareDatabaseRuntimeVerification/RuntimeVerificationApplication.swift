@@ -1,41 +1,27 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
+@_spi(DatabaseExecution) import DatabaseEngine
 import DatabaseKit
-import DatabaseEngine
 import DatabaseRuntime
-import DatabaseServerRuntime
-import StorageKit
 #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
-import DatabaseTypes
 import VectorIndex
 #endif
-#if !arch(wasm32)
-import DatabaseServerFoundation
-import StorageKitSystemClock
-#endif
 
-final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplication {
-    let partitionIdentity: StoragePartitionIdentity
-    let storageLimits = CloudflareDurableObjectLimits.default
+final class RuntimeVerificationApplication:
+    CloudflareDatabaseApplication,
+    Sendable {
+    private let partitionIdentity: StoragePartitionIdentity
     #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
-    let storageLayout: CloudflareDatabaseStorageLayout
-    let jobAuthorizationProvider:
-        AnyCloudflareDatabaseJobAuthorizationProvider? =
-            AnyCloudflareDatabaseJobAuthorizationProvider(
-                RuntimeVerificationJobAuthorizationProvider()
-            )
-    #else
-    let jobAuthorizationProvider:
-        AnyCloudflareDatabaseJobAuthorizationProvider? = nil
+    private let storageLayout: CloudflareDatabaseStorageLayout
     #endif
 
     init() throws {
-        partitionIdentity = try StoragePartitionIdentity(
+        self.partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
         #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
-        storageLayout = try CloudflareDatabaseStorageLayout(
+        self.storageLayout = try CloudflareDatabaseStorageLayout(
             domainID: DatabaseStorageDomain.ID("primary"),
             domainNamespacePath: ["database", "runtime-verification"],
             placementID: Base.Placement.ID("default"),
@@ -44,15 +30,7 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
         #endif
     }
 
-    func makeContainerDefinition() async throws
-        -> DatabaseContainerDefinition {
-        #if arch(wasm32)
-        let monotonicClock = CloudflareDatabaseMonotonicClock()
-        let wallClock = CloudflareDatabaseWallClock()
-        #else
-        let monotonicClock = SystemStorageClock()
-        let wallClock = RealtimeDatabaseWallClock()
-        #endif
+    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
         var entities = [try RuntimeVerificationDocument.schemaEntity]
         var entityRuntimes = [
             try DatabaseFrameworkRuntime.entity(
@@ -69,18 +47,21 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
             try RuntimeVerificationFlatDocument.schemaEntity,
         ])
         entityRuntimes.append(contentsOf: [
-            try DatabaseFrameworkRuntime.entity(RuntimeVerificationIVFDocument.self),
-            try DatabaseFrameworkRuntime.entity(RuntimeVerificationPQDocument.self),
-            try DatabaseFrameworkRuntime.entity(RuntimeVerificationFlatDocument.self),
+            try DatabaseFrameworkRuntime.entity(
+                RuntimeVerificationIVFDocument.self
+            ),
+            try DatabaseFrameworkRuntime.entity(
+                RuntimeVerificationPQDocument.self
+            ),
+            try DatabaseFrameworkRuntime.entity(
+                RuntimeVerificationFlatDocument.self
+            ),
         ])
         authorizationPolicies.append(contentsOf: [
             AuthorizationPolicyHandler(RuntimeVerificationIVFDocument.self),
             AuthorizationPolicyHandler(RuntimeVerificationPQDocument.self),
             AuthorizationPolicyHandler(RuntimeVerificationFlatDocument.self),
         ])
-        #endif
-
-        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
         let indexConfigurations: [any IndexRuntimeConfiguration] = [
             VectorIndexConfiguration<RuntimeVerificationIVFDocument>(
                 field: RuntimeVerificationIVFDocument.fields.embedding,
@@ -107,134 +88,60 @@ final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplicati
         let indexConfigurations: [any IndexRuntimeConfiguration] = []
         #endif
 
-        #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
-        try verifyHNSWRejection(
-            monotonicClock: monotonicClock,
-            wallClock: wallClock
+        let schema = try Schema(entities: entities)
+        let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
+            entityRuntimes: entityRuntimes,
+            authorizationPolicies: authorizationPolicies
         )
-        #endif
-
-        return DatabaseContainerDefinition(
-            schema: try Schema(
-                entities: entities
-            ),
-            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
-                entityRuntimes: entityRuntimes,
-                authorizationPolicies: authorizationPolicies
-            ),
+        #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+        let definition = CloudflareDatabaseDefinition(
+            partitionIdentity: partitionIdentity,
+            storageLayout: storageLayout,
+            schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
             security: .enabled(),
-            monotonicClock: monotonicClock,
-            wallClock: wallClock,
             indexConfigurations: indexConfigurations,
             logging: .disabled
         )
-    }
-
-    #if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
-    private func verifyHNSWRejection(
-        monotonicClock: any StorageMonotonicClock,
-        wallClock: any WallClock
-    ) throws {
-        let definition = DatabaseContainerDefinition(
-            schema: try Schema(
-                entities: [try RuntimeVerificationVectorDocument.schemaEntity]
-            ),
-            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
-                entityRuntimes: [
-                    try DatabaseFrameworkRuntime.entity(
-                        RuntimeVerificationVectorDocument.self
-                    )
-                ]
-            ),
-            security: .enabled(),
-            monotonicClock: monotonicClock,
-            wallClock: wallClock,
-            indexConfigurations: [
-                VectorIndexConfiguration<RuntimeVerificationVectorDocument>(
-                    field: RuntimeVerificationVectorDocument.fields.embedding,
-                    algorithm: .hnsw(.default)
-                )
-            ]
-        )
-        do {
-            try definition.validateCloudflareHostingCapabilities()
-        } catch let error {
-            guard error == .unsupportedHNSW(
-                indexName: "RuntimeVerificationVectorDocument_embedding"
-            ) else {
-                throw RuntimeVerificationError.hnswCapabilityErrorMismatch
-            }
-            return
-        }
-        throw RuntimeVerificationError.hnswCapabilityWasAccepted
-    }
-
-    #endif
-
-    func makeOperationConfiguration(
-        for container: DBContainer
-    ) async throws -> DatabaseOperationConfiguration {
-        #if arch(wasm32)
-        let clock = CloudflareDatabaseWallClock()
-        let identifierGenerator = CloudflareDatabaseUUIDGenerator()
         #else
-        let clock = RealtimeDatabaseWallClock()
-        let identifierGenerator = RandomDatabaseUUIDGenerator()
+        let definition = CloudflareDatabaseDefinition(
+            partitionIdentity: partitionIdentity,
+            schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
+            security: .enabled(),
+            indexConfigurations: indexConfigurations,
+            logging: .disabled
+        )
         #endif
-        let jobServiceFactory = try DatabasePersistentJobServiceFactory(
-            registry: DatabaseResumableOperationRegistry(operations: []),
-            identifierGenerator: identifierGenerator,
-            storageLimits: DatabasePersistentJobStorageLimits(
-                maximumStorageValueBytes: 1_048_576
-            )
-        )
-        return try DatabaseOperationConfiguration(
-            identity: DatabaseOperationIdentity(
-                version: "cloudflare-runtime-verification"
-            ),
-            serviceFactory: AnyDatabaseOperationServiceFactory(
-                CanonicalDatabaseOperationServiceFactory(
-                    maintenanceServiceFactory:
-                        DatabaseMaintenanceOperationServiceFactory(
-                            identifierGenerator: identifierGenerator
-                        ),
-                    jobServiceFactory: jobServiceFactory
+        try definition.validateHostingCapabilities()
+        return definition
+    }
+
+    func makeSession(
+        for container: DBContainer
+    ) async throws -> RuntimeVerificationSession {
+        #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+        let baseID = try Base.ID("runtime-verification")
+        _ = try await container.executionProvisionBaseRecord(
+            baseID,
+            placementID: container.executionDefaultBasePlacementID,
+            initialGrants: [
+                Security.Grant(
+                    subject: .principal(
+                        RuntimeVerificationSession.principalIdentifier
+                    ),
+                    resource: .base(baseID),
+                    access: .all
                 )
-            ),
-            admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
-                UnrestrictedDatabaseOperationAdmissionPolicy()
-            ),
+            ],
+            expectedRevision: 0
         )
+        return RuntimeVerificationSession(
+            container: container,
+            baseID: baseID
+        )
+        #else
+        return RuntimeVerificationSession(container: container)
+        #endif
     }
 }
-
-#if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
-private struct RuntimeVerificationJobAuthorizationProvider:
-    CloudflareDatabaseJobAuthorizationProviding {
-    private static let principalIdentifier = "runtime-verification"
-
-    func reference(
-        for authorization: AuthorizationContext
-    ) throws -> DatabaseJobAuthorizationReference {
-        guard authorization.principal?.identifier == Self.principalIdentifier
-        else {
-            throw DatabaseJobAuthorizationError.revalidationFailed
-        }
-        return try DatabaseJobAuthorizationReference(Self.principalIdentifier)
-    }
-
-    func revalidate(
-        _ reference: DatabaseJobAuthorizationReference
-    ) async throws -> AuthorizationContext {
-        guard reference.value == Self.principalIdentifier else {
-            throw DatabaseJobAuthorizationError.revalidationFailed
-        }
-        return .authenticated(
-            Principal(
-                identifier: Self.principalIdentifier,
-                roles: ["admin"]
-            )
-        )
-    }
-}
-#endif

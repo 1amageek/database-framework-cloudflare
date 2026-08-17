@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { StorageKitDurableObjectHost } from "@storage-kit/cloudflare-durable-object-storage-host";
 import {
   databaseAlarmRecoveryDelayMilliseconds,
+  databaseMaxContextBytes,
   databaseMaxPendingRequests,
   databaseMaxQueuedRequestBytes,
   databaseMaxRequestBytes,
@@ -22,10 +23,6 @@ import { databaseCompletionStatus } from "./DatabaseCompletionStatus";
 import { encodeDatabaseExecutionFailure } from "./DatabaseExecutionFailure";
 import { DatabaseExecutionInputError } from "./DatabaseExecutionInputError";
 import { DatabaseRuntimeInvocationError } from "./DatabaseRuntimeInvocationError";
-import {
-  encodeDatabaseAuthenticatedPrincipal,
-  type DatabaseAuthenticatedPrincipal,
-} from "./DatabaseAuthenticatedPrincipal";
 
 export abstract class CloudflareDatabaseDurableObject<
   Environment extends DatabaseRuntimeLimitEnvironment,
@@ -57,6 +54,7 @@ export abstract class CloudflareDatabaseDurableObject<
     const invocationTimeoutMilliseconds =
       databaseInvocationTimeoutMilliseconds(env);
     this.connectionLimits = new DatabaseRuntimeConnectionLimits({
+      maximumContextBytes: databaseMaxContextBytes(env),
       maximumRequestBytes: databaseMaxRequestBytes(env),
       maximumResponseBytes: databaseMaxResponseBytes(env),
       invocationTimeoutMilliseconds,
@@ -78,52 +76,66 @@ export abstract class CloudflareDatabaseDurableObject<
       try {
         await this.runtimeConnection();
       } catch (error) {
-        console.error("Database runtime bootstrap failed", error);
+        console.error(JSON.stringify({
+          message: "Database runtime bootstrap failed",
+          error: error instanceof Error ? error.message : String(error),
+        }));
         throw encodeDatabaseExecutionFailure(error);
       }
     });
   }
 
-  /** Consumes the Durable Object RPC-owned request view. */
-  async execute(
+  /** Consumes Durable Object RPC-owned opaque request and context views. */
+  async invoke(
     requestBytes: Uint8Array,
-    principal: DatabaseAuthenticatedPrincipal
+    contextBytes: Uint8Array
   ): Promise<Uint8Array> {
     try {
       if (!(requestBytes instanceof Uint8Array)) {
         throw new DatabaseExecutionInputError(
-          "Database execute input must be Uint8Array"
+          "Database invocation request must be Uint8Array"
         );
       }
       if (requestBytes.byteLength > this.connectionLimits.maximumRequestBytes) {
         throw new DatabaseRuntimeInvocationError(
           databaseCompletionStatus.requestTooLarge,
-          "DatabaseWire request exceeds the Durable Object limit",
+          "Application request exceeds the Durable Object limit",
         );
       }
-      const authorizationBytes = encodeDatabaseAuthenticatedPrincipal(
-        principal
-      );
+      if (!(contextBytes instanceof Uint8Array)) {
+        throw new DatabaseExecutionInputError(
+          "Database invocation context must be Uint8Array"
+        );
+      }
+      if (contextBytes.byteLength > this.connectionLimits.maximumContextBytes) {
+        throw new DatabaseRuntimeInvocationError(
+          databaseCompletionStatus.contextTooLarge,
+          "Application context exceeds the Durable Object limit",
+        );
+      }
       return await this.runtimeEntryQueue.enqueueInvocation(
         requestBytes,
-        authorizationBytes,
-        async (ownedRequest, ownedAuthorization) => {
+        contextBytes,
+        async (ownedRequest, ownedContext) => {
           const connection = await this.runtimeConnection();
-          const response = await connection.execute(
+          const response = await connection.invoke(
             ownedRequest,
-            ownedAuthorization
+            ownedContext
           );
           if (response.byteLength > this.connectionLimits.maximumResponseBytes) {
             throw new DatabaseRuntimeInvocationError(
               databaseCompletionStatus.responseTooLarge,
-              "DatabaseWire response exceeds the Durable Object limit",
+              "Application response exceeds the Durable Object limit",
             );
           }
           return response;
         }
       );
     } catch (error) {
-      console.error("Database execution failed", error);
+      console.error(JSON.stringify({
+        message: "Database invocation failed",
+        error: error instanceof Error ? error.message : String(error),
+      }));
       throw encodeDatabaseExecutionFailure(error);
     }
   }
@@ -132,7 +144,7 @@ export abstract class CloudflareDatabaseDurableObject<
     const recoveryLease = await this.alarmScheduler.prepareAlarmRecovery(
       Date.now() + this.alarmRecoveryDelayMilliseconds
     );
-    return this.runtimeEntryQueue.enqueueScheduledWork(
+    return this.runtimeEntryQueue.enqueueAlarm(
       async () => {
         try {
           this.alarmScheduler.beginAlarmProcessing(recoveryLease);
@@ -141,10 +153,10 @@ export abstract class CloudflareDatabaseDurableObject<
           await this.alarmScheduler.completeAlarmProcessing(recoveryLease);
         } catch (error) {
           this.alarmScheduler.preserveAlarmRecovery(recoveryLease);
-          console.error(
-            "Database scheduled work failed; recovery alarm retained",
-            error
-          );
+          console.error(JSON.stringify({
+            message: "Database alarm failed; recovery alarm retained",
+            error: error instanceof Error ? error.message : String(error),
+          }));
           throw error;
         }
       }

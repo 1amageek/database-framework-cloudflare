@@ -1,12 +1,12 @@
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageHostTransport
 import CloudflareDurableObjectStorageWire
-import DatabaseKit
-import DatabaseServerRuntime
+import DatabaseEngine
 import DatabaseTypes
+import StorageKit
 import Synchronization
 
-/// Schedules database runtime lifecycle commands from the synchronous boundary.
+/// Schedules database runtime lifecycle commands from the synchronous ABI.
 public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
     private struct CommandState: Sendable {
         var isClosing = false
@@ -20,26 +20,28 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
     }
 
     private let runtime: CloudflareDatabaseRuntime
-
     private let completion: CloudflareDatabaseCompletionChannel
-    private let limits: CloudflareDatabaseOperationLimits
+    private let limits: CloudflareDatabaseRuntimeLimits
     private let commandState = Mutex(CommandState())
 
     public init<
-        Application: CloudflareDatabaseOperationApplication,
+        Application: CloudflareDatabaseApplication,
         StorageClient: CloudflareDurableObjectStorageClient,
-        JobScheduler: DatabaseJobScheduler
+        MonotonicClock: StorageMonotonicClock,
+        AbsoluteClock: WallClock
     >(
         application: Application,
         storageClient: StorageClient,
-        jobScheduler: JobScheduler,
+        monotonicClock: MonotonicClock,
+        wallClock: AbsoluteClock,
         completion: CloudflareDatabaseCompletionChannel,
-        limits: CloudflareDatabaseOperationLimits = .default
+        limits: CloudflareDatabaseRuntimeLimits = .default
     ) {
         self.runtime = CloudflareDatabaseRuntime(
             application: application,
             storageClient: storageClient,
-            jobScheduler: jobScheduler,
+            monotonicClock: monotonicClock,
+            wallClock: wallClock,
             completion: completion,
             limits: limits
         )
@@ -47,101 +49,50 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         self.limits = limits
     }
 
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
-    init<
-        StorageClient: CloudflareDurableObjectStorageClient,
-        JobScheduler: DatabaseJobScheduler
-    >(
-        application: AnyDatabaseOperationApplication,
-        partitionIdentity: StoragePartitionIdentity,
-        storageLimits: CloudflareDurableObjectLimits,
-        storageLayout: CloudflareDatabaseStorageLayout,
+    package init<StorageClient: CloudflareDurableObjectStorageClient>(
+        application: AnyCloudflareDatabaseApplication,
         storageClient: StorageClient,
-        jobScheduler: JobScheduler,
-        jobAuthorizationProvider:
-            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
+        monotonicClock: any StorageMonotonicClock,
+        wallClock: any WallClock,
         completion: CloudflareDatabaseCompletionChannel,
-        limits: CloudflareDatabaseOperationLimits = .default
+        limits: CloudflareDatabaseRuntimeLimits = .default
     ) {
         self.runtime = CloudflareDatabaseRuntime(
             application: application,
-            partitionIdentity: partitionIdentity,
-            storageLimits: storageLimits,
-            storageLayout: storageLayout,
             storageClient: storageClient,
-            jobScheduler: jobScheduler,
-            jobAuthorizationProvider: jobAuthorizationProvider,
+            monotonicClock: monotonicClock,
+            wallClock: wallClock,
             completion: completion,
             limits: limits
         )
         self.completion = completion
         self.limits = limits
     }
-    #else
-    init<
-        StorageClient: CloudflareDurableObjectStorageClient,
-        JobScheduler: DatabaseJobScheduler
-    >(
-        application: AnyDatabaseOperationApplication,
-        partitionIdentity: StoragePartitionIdentity,
-        storageLimits: CloudflareDurableObjectLimits,
-        storageClient: StorageClient,
-        jobScheduler: JobScheduler,
-        jobAuthorizationProvider:
-            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
-        completion: CloudflareDatabaseCompletionChannel,
-        limits: CloudflareDatabaseOperationLimits = .default
-    ) {
-        self.runtime = CloudflareDatabaseRuntime(
-            application: application,
-            partitionIdentity: partitionIdentity,
-            storageLimits: storageLimits,
-            storageClient: storageClient,
-            jobScheduler: jobScheduler,
-            jobAuthorizationProvider: jobAuthorizationProvider,
-            completion: completion,
-            limits: limits
-        )
-        self.completion = completion
-        self.limits = limits
-    }
-    #endif
 
-#if arch(wasm32)
-    public convenience init<Application: CloudflareDatabaseOperationApplication>(
+    #if arch(wasm32)
+    public convenience init<Application: CloudflareDatabaseApplication>(
         application: Application,
         completion: CloudflareDatabaseCompletionChannel =
             CloudflareDatabaseCompletionChannel(),
-        limits: CloudflareDatabaseOperationLimits = .default,
-        storageTransportLimits: CloudflareDatabaseStorageTransportLimits = .default
+        limits: CloudflareDatabaseRuntimeLimits = .default,
+        storageTransportLimits: CloudflareDatabaseStorageTransportLimits =
+            .default
     ) throws {
-        let transport = try CloudflareDurableObjectStorageHostTransport(
-            maximumRequestBytes: storageTransportLimits.maximumRequestBytes,
-            maximumResponseBytes: storageTransportLimits.maximumResponseBytes
-        )
-        self.init(
-            application: application,
-            storageClient: CloudflareDurableObjectStorageWireClient(
-                transport: transport
-            ),
-            jobScheduler: CloudflareDatabaseAlarmScheduler(),
+        try self.init(
+            application: AnyCloudflareDatabaseApplication(application),
             completion: completion,
-            limits: limits
+            limits: limits,
+            storageTransportLimits: storageTransportLimits
         )
     }
 
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
-    convenience init(
-        application: AnyDatabaseOperationApplication,
-        partitionIdentity: StoragePartitionIdentity,
-        storageLimits: CloudflareDurableObjectLimits,
-        storageLayout: CloudflareDatabaseStorageLayout,
-        jobAuthorizationProvider:
-            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
+    package convenience init(
+        application: AnyCloudflareDatabaseApplication,
         completion: CloudflareDatabaseCompletionChannel =
             CloudflareDatabaseCompletionChannel(),
-        limits: CloudflareDatabaseOperationLimits = .default,
-        storageTransportLimits: CloudflareDatabaseStorageTransportLimits = .default
+        limits: CloudflareDatabaseRuntimeLimits = .default,
+        storageTransportLimits: CloudflareDatabaseStorageTransportLimits =
+            .default
     ) throws {
         let transport = try CloudflareDurableObjectStorageHostTransport(
             maximumRequestBytes: storageTransportLimits.maximumRequestBytes,
@@ -149,49 +100,16 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         )
         self.init(
             application: application,
-            partitionIdentity: partitionIdentity,
-            storageLimits: storageLimits,
-            storageLayout: storageLayout,
             storageClient: CloudflareDurableObjectStorageWireClient(
                 transport: transport
             ),
-            jobScheduler: CloudflareDatabaseAlarmScheduler(),
-            jobAuthorizationProvider: jobAuthorizationProvider,
-            completion: completion,
-            limits: limits
-        )
-    }
-    #else
-    convenience init(
-        application: AnyDatabaseOperationApplication,
-        partitionIdentity: StoragePartitionIdentity,
-        storageLimits: CloudflareDurableObjectLimits,
-        jobAuthorizationProvider:
-            AnyCloudflareDatabaseJobAuthorizationProvider? = nil,
-        completion: CloudflareDatabaseCompletionChannel =
-            CloudflareDatabaseCompletionChannel(),
-        limits: CloudflareDatabaseOperationLimits = .default,
-        storageTransportLimits: CloudflareDatabaseStorageTransportLimits = .default
-    ) throws {
-        let transport = try CloudflareDurableObjectStorageHostTransport(
-            maximumRequestBytes: storageTransportLimits.maximumRequestBytes,
-            maximumResponseBytes: storageTransportLimits.maximumResponseBytes
-        )
-        self.init(
-            application: application,
-            partitionIdentity: partitionIdentity,
-            storageLimits: storageLimits,
-            storageClient: CloudflareDurableObjectStorageWireClient(
-                transport: transport
-            ),
-            jobScheduler: CloudflareDatabaseAlarmScheduler(),
-            jobAuthorizationProvider: jobAuthorizationProvider,
+            monotonicClock: CloudflareDatabaseMonotonicClock(),
+            wallClock: CloudflareDatabaseWallClock(),
             completion: completion,
             limits: limits
         )
     }
     #endif
-#endif
 
     public func start(callID: UInt32) {
         guard validate(callID: callID) else { return }
@@ -202,23 +120,31 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
 
     public func invoke(
         callID: UInt32,
-        requestBytes: ByteString,
-        authorization: AuthorizationContext
+        contextBytes: ByteString,
+        requestBytes: ByteString
     ) {
         guard validate(callID: callID) else { return }
+        guard contextBytes.count <= limits.maximumContextBytes else {
+            completeFailure(
+                callID: callID,
+                status: .contextTooLarge,
+                message: "Application context exceeds the runtime limit"
+            )
+            return
+        }
         guard requestBytes.count <= limits.maximumRequestBytes else {
             completeFailure(
                 callID: callID,
                 status: .requestTooLarge,
-                message: "Database request exceeds the runtime limit"
+                message: "Application request exceeds the runtime limit"
             )
             return
         }
         enqueue(callID: callID) { [runtime] in
             await runtime.invoke(
                 callID: callID,
-                requestBytes: requestBytes,
-                authorization: authorization
+                contextBytes: contextBytes,
+                requestBytes: requestBytes
             )
         }
     }
@@ -233,12 +159,7 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
     public func shutdown(callID: UInt32) {
         guard validate(callID: callID) else { return }
         let isAccepted = commandState.withLock { state -> Bool in
-            // The first shutdown must enter even when normal work already
-            // fills the queue. Later joiners remain bounded by the same
-            // pending-command budget instead of creating unbounded Tasks.
-            guard !state.isClosing
-                    || state.pendingCount < limits.maximumPendingInvocations
-            else {
+            guard !state.isClosing else {
                 return false
             }
             state.isClosing = true
@@ -256,8 +177,8 @@ public final class CloudflareDatabaseRuntimeCommandChannel: Sendable {
         guard isAccepted else {
             completeFailure(
                 callID: callID,
-                status: .queueCapacityExceeded,
-                message: "Database runtime shutdown queue is full"
+                status: .notStarted,
+                message: "Database runtime is shutting down"
             )
             return
         }

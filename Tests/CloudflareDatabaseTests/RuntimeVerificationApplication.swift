@@ -1,168 +1,86 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageWire
+@_spi(DatabaseExecution) import DatabaseEngine
 import DatabaseKit
-import DatabaseEngine
 import DatabaseRuntime
-import DatabaseServerRuntime
-import DatabaseServerFoundation
-import StorageKitSystemClock
 
-final class RuntimeVerificationApplication: CloudflareDatabaseOperationApplication {
-    private enum JobServiceSelection: Sendable {
-        case injected(AnyDatabaseJobService)
-        case persistent
-    }
-
-    let partitionIdentity: StoragePartitionIdentity
-    let storageLimits = CloudflareDurableObjectLimits.default
+final class RuntimeVerificationApplication:
+    CloudflareDatabaseApplication,
+    Sendable {
+    private let partitionIdentity: StoragePartitionIdentity
     #if CLOUDFLARE_TEST_MULTIPLE_BASES
-    let storageLayout: CloudflareDatabaseStorageLayout
+    private let storageLayout: CloudflareDatabaseStorageLayout
     #endif
-    let jobAuthorizationProvider:
-        AnyCloudflareDatabaseJobAuthorizationProvider?
-    private let jobServiceSelection: JobServiceSelection
 
     init() throws {
-        partitionIdentity = try StoragePartitionIdentity(
+        self.partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
         #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        storageLayout = try makeCloudflareTestStorageLayout(
+        self.storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "runtime-verification"
         )
         #endif
-        self.jobAuthorizationProvider = nil
-        self.jobServiceSelection = .injected(
-            AnyDatabaseJobService(
-                UnavailableCloudflareDatabaseServices()
-            )
-        )
     }
 
-    init(persistentJobs: Void) throws {
-        _ = persistentJobs
-        partitionIdentity = try StoragePartitionIdentity(
-            databaseID: "runtime-verification"
+    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
+        let schema = try RuntimeVerificationSchemaV1.makeSchema()
+        let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
+            entityRuntimes: [
+                try DatabaseFrameworkRuntime.entity(
+                    RuntimeVerificationDocument.self
+                )
+            ],
+            authorizationPolicies: [
+                AuthorizationPolicyHandler(RuntimeVerificationDocument.self)
+            ]
         )
         #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        storageLayout = try makeCloudflareTestStorageLayout(
-            namespace: "runtime-verification"
-        )
-        #endif
-        self.jobAuthorizationProvider =
-            AnyCloudflareDatabaseJobAuthorizationProvider(
-                RuntimeVerificationJobAuthorizationProvider()
-            )
-        self.jobServiceSelection = .persistent
-    }
-
-    init<JobService: DatabaseJobService>(jobService: JobService) throws {
-        partitionIdentity = try StoragePartitionIdentity(
-            databaseID: "runtime-verification"
-        )
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        storageLayout = try makeCloudflareTestStorageLayout(
-            namespace: "runtime-verification"
-        )
-        #endif
-        self.jobAuthorizationProvider = nil
-        self.jobServiceSelection = .injected(
-            AnyDatabaseJobService(jobService)
-        )
-    }
-
-    func makeContainerDefinition() async throws
-        -> DatabaseContainerDefinition {
-        DatabaseContainerDefinition(
-            schema: try RuntimeVerificationSchemaV1.makeSchema(),
+        return CloudflareDatabaseDefinition(
+            partitionIdentity: partitionIdentity,
+            storageLayout: storageLayout,
+            schema: schema,
             migrationPlan: RuntimeVerificationMigrationPlan.self,
-            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
-                entityRuntimes: [
-                    try DatabaseFrameworkRuntime.entity(
-                        RuntimeVerificationDocument.self
-                    )
-                ],
-                authorizationPolicies: [
-                    AuthorizationPolicyHandler(
-                        RuntimeVerificationDocument.self
-                    )
-                ]
-            ),
-            security: .enabled(),
-            monotonicClock: SystemStorageClock(),
-            wallClock: RealtimeDatabaseWallClock()
+            runtimeConfiguration: runtimeConfiguration,
+            security: .enabled()
         )
+        #else
+        return CloudflareDatabaseDefinition(
+            partitionIdentity: partitionIdentity,
+            schema: schema,
+            migrationPlan: RuntimeVerificationMigrationPlan.self,
+            runtimeConfiguration: runtimeConfiguration,
+            security: .enabled()
+        )
+        #endif
     }
 
-    func makeOperationConfiguration(
+    func makeSession(
         for container: DBContainer
-    ) async throws -> DatabaseOperationConfiguration {
-        _ = container
-        let serviceFactory: AnyDatabaseOperationServiceFactory
-        switch jobServiceSelection {
-        case .injected(let jobService):
-            serviceFactory = AnyDatabaseOperationServiceFactory { context in
-                try await RuntimeVerificationServiceFactory(
-                    jobService: jobService
-                ).makeServices(context: context)
-            }
-        case .persistent:
-            let identifierGenerator = RandomDatabaseUUIDGenerator()
-            let jobServiceFactory = try DatabasePersistentJobServiceFactory(
-                registry: DatabaseResumableOperationRegistry(operations: []),
-                identifierGenerator: identifierGenerator,
-                storageLimits: DatabasePersistentJobStorageLimits(
-                    maximumStorageValueBytes: 1_048_576
+    ) async throws -> RuntimeVerificationSession {
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        let baseID = try Base.ID("runtime-verification")
+        _ = try await container.executionProvisionBaseRecord(
+            baseID,
+            placementID: container.executionDefaultBasePlacementID,
+            initialGrants: [
+                Security.Grant(
+                    subject: .principal(
+                        RuntimeVerificationSession.principalIdentifier
+                    ),
+                    resource: .base(baseID),
+                    access: .all
                 )
-            )
-            serviceFactory = AnyDatabaseOperationServiceFactory(
-                CanonicalDatabaseOperationServiceFactory(
-                    maintenanceServiceFactory:
-                        DatabaseMaintenanceOperationServiceFactory(
-                            identifierGenerator: identifierGenerator
-                        ),
-                    jobServiceFactory: jobServiceFactory
-                )
-            )
-        }
-        return try DatabaseOperationConfiguration(
-            identity: DatabaseOperationIdentity(
-                version: "cloudflare-runtime-verification"
-            ),
-            serviceFactory: serviceFactory,
-            admissionPolicy: AnyDatabaseOperationAdmissionPolicy(
-                UnrestrictedDatabaseOperationAdmissionPolicy()
-            ),
+            ],
+            expectedRevision: 0
         )
-    }
-}
-
-private struct RuntimeVerificationJobAuthorizationProvider:
-    CloudflareDatabaseJobAuthorizationProviding {
-    private static let principalIdentifier = "runtime-verification"
-
-    func reference(
-        for authorization: AuthorizationContext
-    ) throws -> DatabaseJobAuthorizationReference {
-        guard authorization.principal?.identifier == Self.principalIdentifier
-        else {
-            throw DatabaseJobAuthorizationError.revalidationFailed
-        }
-        return try DatabaseJobAuthorizationReference(Self.principalIdentifier)
-    }
-
-    func revalidate(
-        _ reference: DatabaseJobAuthorizationReference
-    ) async throws -> AuthorizationContext {
-        guard reference.value == Self.principalIdentifier else {
-            throw DatabaseJobAuthorizationError.revalidationFailed
-        }
-        return .authenticated(
-            Principal(
-                identifier: Self.principalIdentifier,
-                roles: ["admin"]
-            )
+        return RuntimeVerificationSession(
+            container: container,
+            baseID: baseID
         )
+        #else
+        return RuntimeVerificationSession(container: container)
+        #endif
     }
 }

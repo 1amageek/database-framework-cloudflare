@@ -28,9 +28,6 @@ import { WasiPreview1Host } from "./WasiPreview1Host";
 import {
   requireDatabaseRuntimeEndpoints,
 } from "./RequiredDatabaseRuntimeEndpoints";
-import {
-  databaseAuthorizationMaximumFrameBytes,
-} from "./DatabaseAuthenticatedPrincipal";
 
 type PendingInvocation = {
   purpose: DatabaseRuntimeCallPurpose;
@@ -43,7 +40,7 @@ type PendingInvocation = {
 type DatabaseRuntimeCallPurpose =
   | "startup"
   | "request"
-  | "scheduledWork"
+  | "alarm"
   | "shutdown";
 
 type RuntimeCompletion = {
@@ -158,9 +155,6 @@ export class DatabaseRuntimeConnection {
             cancel: (waitID: number) =>
               connection.clockService.cancel(normalizedClockWaitID(waitID)),
           };
-          runtimeServices.database_random = {
-            random_u64: () => randomUInt64(),
-          };
           runtimeServices.database_alarm = {
             schedule: (
               secondsSinceUnixEpoch: bigint,
@@ -224,42 +218,52 @@ export class DatabaseRuntimeConnection {
     );
   }
 
-  async execute(
+  async invoke(
     requestBytes: Uint8Array,
-    authorizationBytes: Uint8Array
+    contextBytes: Uint8Array
   ): Promise<Uint8Array> {
     const runtimeEndpoints = this.runtimeEndpoints();
+    if (!(requestBytes instanceof Uint8Array)) {
+      throw new DatabaseRuntimeInvocationError(
+        databaseCompletionStatus.invalidPayload,
+        "Application request must be Uint8Array"
+      );
+    }
     if (requestBytes.byteLength > this.limits.maximumRequestBytes) {
       throw new DatabaseRuntimeInvocationError(
         databaseCompletionStatus.requestTooLarge,
-        "DatabaseWire request exceeds the runtime connection limit"
+        "Application request exceeds the runtime connection limit"
       );
     }
-    if (!(authorizationBytes instanceof Uint8Array)
-        || authorizationBytes.byteLength === 0
-        || authorizationBytes.byteLength > databaseAuthorizationMaximumFrameBytes) {
+    if (!(contextBytes instanceof Uint8Array)) {
       throw new DatabaseRuntimeInvocationError(
         databaseCompletionStatus.invalidPayload,
-        "Database authorization frame is invalid"
+        "Application context must be Uint8Array"
+      );
+    }
+    if (contextBytes.byteLength > this.limits.maximumContextBytes) {
+      throw new DatabaseRuntimeInvocationError(
+        databaseCompletionStatus.contextTooLarge,
+        "Application context exceeds the runtime connection limit"
       );
     }
     return this.performInvocation("request", (callID) => {
-      const authorizationAddress = this.payloadOwnership.reservePayload(
-        authorizationBytes.byteLength
+      const contextAddress = this.payloadOwnership.reservePayload(
+        contextBytes.byteLength
       );
-      if (authorizationAddress === 0) {
+      if (contextBytes.byteLength > 0 && contextAddress === 0) {
         throw new DatabaseRuntimeInvocationError(
           databaseCompletionStatus.runtimeFailed,
-          "Database runtime returned a zero authorization payload address"
+          "Database runtime returned a zero context payload address"
         );
       }
-      let authorizationTransferred = false;
+      let contextTransferred = false;
       let requestAddress = 0;
       let requestTransferred = false;
       try {
-        this.storeInvocationRequest(authorizationAddress, authorizationBytes);
+        this.storeInvocationRequest(contextAddress, contextBytes);
         requestAddress = this.payloadOwnership.reservePayload(
-        requestBytes.byteLength
+          requestBytes.byteLength
         );
         if (requestBytes.byteLength > 0 && requestAddress === 0) {
           throw new DatabaseRuntimeInvocationError(
@@ -269,10 +273,10 @@ export class DatabaseRuntimeConnection {
         }
         this.storeInvocationRequest(requestAddress, requestBytes);
         this.payloadOwnership.transferPayloadToRuntime(
-          authorizationAddress,
-          authorizationBytes.byteLength
+          contextAddress,
+          contextBytes.byteLength
         );
-        authorizationTransferred = true;
+        contextTransferred = true;
         this.payloadOwnership.transferPayloadToRuntime(
           requestAddress,
           requestBytes.byteLength
@@ -280,8 +284,8 @@ export class DatabaseRuntimeConnection {
         requestTransferred = true;
         runtimeEndpoints.invoke(
           callID,
-          authorizationAddress,
-          authorizationBytes.byteLength,
+          contextAddress,
+          contextBytes.byteLength,
           requestAddress,
           requestBytes.byteLength
         );
@@ -292,10 +296,10 @@ export class DatabaseRuntimeConnection {
             requestBytes.byteLength
           );
         }
-        if (!authorizationTransferred) {
+        if (!contextTransferred) {
           this.payloadOwnership.releaseConnectionPayload(
-            authorizationAddress,
-            authorizationBytes.byteLength
+            contextAddress,
+            contextBytes.byteLength
           );
         }
         throw error;
@@ -305,7 +309,7 @@ export class DatabaseRuntimeConnection {
 
   async alarm(): Promise<void> {
     const runtimeEndpoints = this.runtimeEndpoints();
-    const payload = await this.performInvocation("scheduledWork", (callID) => {
+    const payload = await this.performInvocation("alarm", (callID) => {
       runtimeEndpoints.alarm(callID);
     });
     if (payload.byteLength !== 0) {
@@ -382,7 +386,11 @@ export class DatabaseRuntimeConnection {
     if (this.terminalError !== null) {
       return Promise.reject(this.terminalError);
     }
-    if (this.pendingInvocations.size >= this.limits.maximumPendingInvocations) {
+    if (purpose !== "shutdown" && this.shutdownPromise !== null) {
+      return Promise.reject(new DatabaseRuntimeConnectionShutdownError());
+    }
+    if (purpose !== "shutdown"
+        && this.pendingInvocations.size >= this.limits.maximumPendingInvocations) {
       return Promise.reject(
         new DatabaseRuntimeInvocationError(
           databaseCompletionStatus.queueCapacityExceeded,
@@ -503,11 +511,11 @@ export class DatabaseRuntimeConnection {
       );
       return;
     }
-    if (status === databaseCompletionStatus.scheduledWorkFailed
-        && pendingInvocation.purpose !== "scheduledWork") {
+    if (status === databaseCompletionStatus.alarmFailed
+        && pendingInvocation.purpose !== "alarm") {
       this.enterTerminal(
         new Error(
-          "Database runtime returned a scheduled-work failure for a "
+          "Database runtime returned an alarm failure for a "
             + `${pendingInvocation.purpose} call`
         )
       );
@@ -538,7 +546,7 @@ export class DatabaseRuntimeConnection {
         payload: null,
         error: new DatabaseRuntimeInvocationError(
           databaseCompletionStatus.responseTooLarge,
-          "DatabaseWire response exceeds the runtime connection limit"
+          "Application response exceeds the runtime connection limit"
         ),
       };
     } else {
@@ -807,12 +815,6 @@ export class DatabaseRuntimeConnection {
     }
     return requireDatabaseRuntimeEndpoints(this.runtimeInstance);
   }
-}
-
-function randomUInt64(): bigint {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return new DataView(bytes.buffer).getBigUint64(0, false);
 }
 
 function asError(error: unknown): Error {

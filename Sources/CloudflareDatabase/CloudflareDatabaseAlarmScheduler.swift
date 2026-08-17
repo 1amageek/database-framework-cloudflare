@@ -1,5 +1,4 @@
 #if arch(wasm32)
-import DatabaseServerRuntime
 import DatabaseTypes
 
 @_extern(wasm, module: "database_alarm", name: "schedule")
@@ -8,15 +7,15 @@ private func requestDatabaseWakeUpNoLaterThan(
     _ nanoseconds: UInt32
 )
 
-/// Durable Object alarm scheduler provided by the runtime owner.
-public struct CloudflareDatabaseAlarmScheduler: DatabaseJobScheduler {
+/// Durable Object alarm scheduling service supplied by the Cloudflare host.
+public struct CloudflareDatabaseAlarmScheduler: Sendable {
     public init() {}
 
     public func ensureWakeUp(
         noLaterThan timestamp: Timestamp
-    ) async throws {
+    ) throws(CloudflareDatabaseAlarmSchedulerError) {
         guard timestamp.nanoseconds < 1_000_000_000 else {
-            throw CloudflareDatabaseAlarmSchedulerError.invalidTimestamp
+            throw .invalidTimestamp
         }
         requestDatabaseWakeUpNoLaterThan(
             timestamp.secondsSinceUnixEpoch,

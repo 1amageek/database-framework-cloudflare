@@ -1,10 +1,18 @@
 {
   "name": "@database-framework-cloudflare/cloudflare-database-runtime",
-  "version": "0.0.0",
+  "version": "26.817.0",
   "description": "Cloudflare Durable Object host runtime for database-framework Embedded WASM applications.",
-  "private": true,
   "license": "MIT",
   "type": "module",
+  "files": [
+    "README.md",
+    "src"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1amageek/database-framework-cloudflare.git",
+    "directory": "Workers/CloudflareDatabaseRuntime"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -21,10 +29,6 @@
     "./execution-failure": {
       "types": "./src/DatabaseExecutionFailure.ts",
       "import": "./src/DatabaseExecutionFailure.ts"
-    },
-    "./authorization": {
-      "types": "./src/DatabaseAuthenticatedPrincipal.ts",
-      "import": "./src/DatabaseAuthenticatedPrincipal.ts"
     }
   },
   "scripts": {
@@ -33,14 +37,14 @@
     "smoke:workerd": "node scripts/smoke-workerd-full-runtime.mjs"
   },
   "dependencies": {
-    "@storage-kit/cloudflare-durable-object-storage-host": "file:../../../storage-kit/Workers/CloudflareDurableObjectStorageHost"
+    "@storage-kit/cloudflare-durable-object-storage-host": "https://github.com/1amageek/storage-kit/releases/download/26.0817.0/storage-kit-cloudflare-durable-object-storage-host-26.817.0.tgz"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260723.1",
+    "@cloudflare/workers-types": "5.20260817.1",
     "@types/node": "^26.0.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "wrangler": "4.114.0"
+    "wrangler": "4.123.0"
   },
   "overrides": {
     "undici": "7.29.0"

@@ -1,749 +1,359 @@
 import CloudflareDatabase
-import CloudflareDurableObjectStorage
 import CloudflareDurableObjectStorageTesting
-import DatabaseKit
 import DatabaseTypes
-import DatabaseWire
+import StorageKitSystemClock
 import Testing
 
-@Suite("Cloudflare database runtime", .serialized)
+@Suite("Cloudflare application database runtime")
 struct CloudflareDatabaseRuntimeTests {
-    private enum TestOperationTarget {
-        case database
-
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        case base(Base.ID)
-        #endif
-    }
-
-    private var authorization: AuthorizationContext {
-        .authenticated(
-            Principal(
-                identifier: "runtime-verification",
-                roles: ["admin"]
-            )
-        )
-    }
-
-    #if CLOUDFLARE_TEST_VECTOR_INDEXES
-    @Test("HNSW fails at bootstrap before storage access")
-    func rejectsHNSWBeforeStorageAccess() async throws {
-        let application = try CloudflareHNSWRejectionApplication()
-        let definition = try await application.makeContainerDefinition()
-        #expect(throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
-            indexName: "CloudflareHNSWRejectionDocument_embedding"
-        )) {
-            try definition.validateCloudflareHostingCapabilities()
-        }
-
-        let storageClient = UnexpectedStorageAccessClient()
+    @Test("application protocol persists and reads through DBContainer")
+    func persistsAndReadsThroughApplicationSession() async throws {
         let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: application,
-            storageClient: storageClient,
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        await runtime.start(callID: 90)
-
-        let result = try #require(completion.completion(callID: 90))
-        #expect(result.status == .startupFailed)
-        #expect(
-            string(from: result.payload)
-                == "Cloudflare hosting does not support HNSW for vector index 'CloudflareHNSWRejectionDocument_embedding'"
-        )
-        #expect(await storageClient.recordedAccessCount() == 0)
-    }
-
-    @Test("shutdown completes when startup capability validation fails")
-    func completesShutdownAfterConcurrentCapabilityFailure() async throws {
-        let application = try SuspendedHNSWRejectionApplication()
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let storageClient = UnexpectedStorageAccessClient()
-        let runtime = CloudflareDatabaseRuntime(
-            application: application,
-            storageClient: storageClient,
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        let startup = Task {
-            await runtime.start(callID: 91)
-        }
-        await application.waitUntilDefinitionIsRequested()
-        await runtime.shutdown(callID: 92)
-        await application.releaseDefinition()
-        await startup.value
-
-        #expect(completion.completion(callID: 91)?.status == .startupFailed)
-        #expect(completion.completion(callID: 92)?.status == .success)
-        #expect(await storageClient.recordedAccessCount() == 0)
-
-        await runtime.start(callID: 93)
-        #expect(completion.completion(callID: 93)?.status == .notStarted)
-    }
-
-    @Test("custom canonical HNSW configuration cannot bypass admission")
-    func rejectsCustomHNSWConfiguration() async throws {
-        let application = try CloudflareHNSWRejectionApplication(
-            indexConfiguration: CustomHNSWRuntimeConfiguration()
-        )
-        let definition = try await application.makeContainerDefinition()
-
-        #expect(throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
-            indexName: "CloudflareHNSWRejectionDocument_embedding"
-        )) {
-            try definition.validateCloudflareHostingCapabilities()
-        }
-    }
-
-    @Test("invalid vector configuration remains a typed bootstrap failure")
-    func rejectsInvalidVectorConfiguration() async throws {
-        let application = try CloudflareHNSWRejectionApplication(
-            indexConfiguration: InvalidVectorRuntimeConfiguration()
-        )
-        let definition = try await application.makeContainerDefinition()
-
-        #expect(
-            throws: CloudflareDatabaseConfigurationError
-                .invalidVectorConfiguration
-        ) {
-            try definition.validateCloudflareHostingCapabilities()
-        }
-    }
-    #endif
-
-    @Test("selected runtime traits satisfy the verification schema")
-    func composesSelectedRuntimeFeatures() async throws {
-        let application = try RuntimeVerificationApplication()
-        let definition = try await application.makeContainerDefinition()
-        try definition.validateCloudflareHostingCapabilities()
-    }
-
-    @Test("startup exposes the canonical capabilities operation")
-    func startsFullServerRuntime() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
+        let runtime = try makeRuntime(completion: completion)
 
         await runtime.start(callID: 1)
         #expect(completion.completion(callID: 1)?.status == .success)
 
-        let request = try encodeRequest(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            requestID: 42,
-            target: .database,
-            metadata: OperationRequestMetadata(),
-            request: EmptyOperationPayload()
-        )
         await runtime.invoke(
             callID: 2,
-            requestBytes: request,
-            authorization: authorization
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("put:Cloudflare runtime")
         )
+        let write = try #require(completion.completion(callID: 2))
+        #expect(write.status == .success)
+        #expect(string(from: write.payload) == "Cloudflare runtime")
 
-        let completionRecord = try #require(
-            completion.completion(callID: 2)
+        await runtime.invoke(
+            callID: 3,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("get")
         )
-        #expect(completionRecord.status == .success)
-        let decoded = try DatabaseWireDecoder().decodeResponse(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            from: completionRecord.payload,
-            matching: 42
-        )
-        let response: CapabilitiesDescribeOperation.Response
-        switch decoded {
-        case .success(let value):
-            response = value
-        case .failure(let error):
-            throw error
-        }
-        #expect(response.runtimeVersion == "cloudflare-runtime-verification")
+        let read = try #require(completion.completion(callID: 3))
+        #expect(read.status == .success)
+        #expect(string(from: read.payload) == "Cloudflare runtime")
+
+        await runtime.shutdown(callID: 4)
+        #expect(completion.completion(callID: 4)?.status == .success)
     }
 
-    @Test("synchronous command channel preserves startup-before-invoke order")
-    func commandChannelPreservesSubmissionOrder() async throws {
+    @Test("application failures remain non-terminal")
+    func applicationFailureDoesNotPoisonRuntime() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = try makeRuntime(completion: completion)
+        await runtime.start(callID: 10)
+
+        await runtime.invoke(
+            callID: 11,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("unknown")
+        )
+        #expect(completion.completion(callID: 11)?.status == .applicationFailed)
+
+        await runtime.invoke(
+            callID: 12,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("cancel")
+        )
+        #expect(completion.completion(callID: 12)?.status == .cancelled)
+
+        await runtime.invoke(
+            callID: 13,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("echo:still-alive")
+        )
+        let response = try #require(completion.completion(callID: 13))
+        #expect(response.status == .success)
+        #expect(string(from: response.payload) == "still-alive")
+
+        await runtime.shutdown(callID: 14)
+    }
+
+    @Test("opaque context is interpreted only by the application")
+    func applicationOwnsContextInterpretation() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = try makeRuntime(completion: completion)
+        await runtime.start(callID: 20)
+
+        await runtime.invoke(
+            callID: 21,
+            contextBytes: bytes("untrusted-principal"),
+            requestBytes: bytes("echo:secret")
+        )
+        #expect(completion.completion(callID: 21)?.status == .applicationFailed)
+
+        await runtime.shutdown(callID: 22)
+    }
+
+    @Test("lifecycle and payload failures stay typed at the host boundary")
+    func enforcesLifecycleAndPayloadLimits() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let limits = try CloudflareDatabaseRuntimeLimits(
+            maximumContextBytes: 4,
+            maximumRequestBytes: 4,
+            maximumResponseBytes: 4,
+            maximumErrorBytes: 256,
+            maximumPendingInvocations: 4
+        )
+        let runtime = try makeRuntime(
+            completion: completion,
+            limits: limits
+        )
+
+        await runtime.invoke(
+            callID: 30,
+            contextBytes: bytes("ctx"),
+            requestBytes: bytes("get")
+        )
+        #expect(completion.completion(callID: 30)?.status == .notStarted)
+
+        await runtime.start(callID: 31)
+        await runtime.invoke(
+            callID: 32,
+            contextBytes: bytes("large"),
+            requestBytes: bytes("get")
+        )
+        #expect(completion.completion(callID: 32)?.status == .contextTooLarge)
+
+        await runtime.invoke(
+            callID: 33,
+            contextBytes: bytes("ctx"),
+            requestBytes: bytes("large")
+        )
+        #expect(completion.completion(callID: 33)?.status == .requestTooLarge)
+
+        await runtime.shutdown(callID: 34)
+        await runtime.invoke(
+            callID: 35,
+            contextBytes: bytes("ctx"),
+            requestBytes: bytes("get")
+        )
+        #expect(completion.completion(callID: 35)?.status == .notStarted)
+    }
+
+    @Test("application alarm handling is explicit and unavailable handling is non-terminal")
+    func handlesApplicationAlarmsAndReportsUnavailableHandling() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = try makeRuntime(completion: completion)
+        await runtime.start(callID: 40)
+
+        await runtime.alarm(callID: 41)
+        #expect(completion.completion(callID: 41)?.status == .alarmFailed)
+
+        await runtime.invoke(
+            callID: 42,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("echo:available")
+        )
+        #expect(completion.completion(callID: 42)?.status == .success)
+        await runtime.shutdown(callID: 43)
+
+        let alarmApplication = try AlarmHandlingRuntimeApplication()
+        let alarmCompletion = RecordingCloudflareDatabaseCompletion()
+        let alarmRuntime = CloudflareDatabaseRuntime(
+            application: alarmApplication,
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: alarmCompletion
+            )
+        )
+        await alarmRuntime.start(callID: 44)
+        await alarmRuntime.alarm(callID: 45)
+        #expect(alarmCompletion.completion(callID: 45)?.status == .success)
+        #expect(await alarmApplication.handledAlarmCount() == 1)
+        await alarmRuntime.shutdown(callID: 46)
+    }
+
+    @Test("startup failures release storage and readiness remains retryable")
+    func releasesStorageAndRetriesStartupFailure() async throws {
+        let completion = RecordingCloudflareDatabaseCompletion()
+        let runtime = CloudflareDatabaseRuntime(
+            application: try RuntimeVerificationApplication(),
+            storageClient: FailingOnceReadinessClient(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: completion
+            )
+        )
+
+        await runtime.start(callID: 50)
+        #expect(completion.completion(callID: 50)?.status == .startupFailed)
+        await runtime.start(callID: 51)
+        #expect(completion.completion(callID: 51)?.status == .success)
+        await runtime.shutdown(callID: 52)
+
+        let preOpenProbe = ShutdownRecordingStorageEngine.Probe()
+        let preOpenEngine = try await ShutdownRecordingStorageEngine(
+            configuration: .init(
+                probe: preOpenProbe,
+                rejectsTransactionCreation: true
+            )
+        )
+        let preOpenCompletion = RecordingCloudflareDatabaseCompletion()
+        let preOpenRuntime = CloudflareDatabaseRuntime(
+            application: AnyCloudflareDatabaseApplication(
+                try StartupFailureApplication(
+                    rejectsSessionCreation: false
+                )
+            ),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: preOpenCompletion
+            ),
+            createStorageEngine: { _ in preOpenEngine }
+        )
+        await preOpenRuntime.start(callID: 53)
+        #expect(preOpenCompletion.completion(callID: 53)?.status == .startupFailed)
+        #expect(
+            preOpenProbe.shutdownState == .init(
+                wasRequested: true,
+                didComplete: true
+            )
+        )
+
+        let postOpenProbe = ShutdownRecordingStorageEngine.Probe()
+        let postOpenEngine = try await ShutdownRecordingStorageEngine(
+            configuration: .init(
+                probe: postOpenProbe,
+                rejectsTransactionCreation: false
+            )
+        )
+        let postOpenCompletion = RecordingCloudflareDatabaseCompletion()
+        let postOpenRuntime = CloudflareDatabaseRuntime(
+            application: AnyCloudflareDatabaseApplication(
+                try StartupFailureApplication(
+                    rejectsSessionCreation: true
+                )
+            ),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: postOpenCompletion
+            ),
+            createStorageEngine: { _ in postOpenEngine }
+        )
+        await postOpenRuntime.start(callID: 54)
+        #expect(postOpenCompletion.completion(callID: 54)?.status == .startupFailed)
+        #expect(
+            postOpenProbe.shutdownState == .init(
+                wasRequested: true,
+                didComplete: true
+            )
+        )
+    }
+
+    @Test("command FIFO bounds admission and drains before shutdown")
+    func commandFIFOAndShutdownDrain() async throws {
         let application = try SuspendedRuntimeVerificationApplication()
         let completion = RecordingCloudflareDatabaseCompletion()
         let channel = CloudflareDatabaseRuntimeCommandChannel(
             application: application,
             storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
             completion: CloudflareDatabaseCompletionChannel(
                 completion: completion
+            ),
+            limits: try CloudflareDatabaseRuntimeLimits(
+                maximumContextBytes: 1_024,
+                maximumRequestBytes: 1_024,
+                maximumResponseBytes: 1_024,
+                maximumErrorBytes: 256,
+                maximumPendingInvocations: 2
             )
         )
-        let request = try encodeRequest(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            requestID: 4_201,
-            target: .database,
-            metadata: OperationRequestMetadata(),
-            request: EmptyOperationPayload()
-        )
 
-        channel.start(callID: 4_200)
+        channel.start(callID: 60)
         await application.waitUntilDefinitionIsRequested()
         channel.invoke(
-            callID: 4_201,
-            requestBytes: request,
-            authorization: authorization
+            callID: 61,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("echo:queued-after-start")
         )
         await application.releaseDefinition()
 
         #expect(
-            try await completion.waitForCompletion(callID: 4_200).status
+            try await completion.waitForCompletion(callID: 60).status
                 == .success
         )
-        let invocation = try await completion.waitForCompletion(callID: 4_201)
-        #expect(invocation.status == .success)
-        let response = try DatabaseWireDecoder().decodeResponse(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            from: invocation.payload,
-            matching: 4_201
-        )
-        guard case .success(let capabilities) = response else {
-            Issue.record("Expected capabilities response")
-            return
-        }
-        #expect(
-            capabilities.runtimeVersion
-                == "cloudflare-runtime-verification"
-        )
+        let startupQueued = try await completion.waitForCompletion(callID: 61)
+        #expect(startupQueued.status == .success)
+        #expect(string(from: startupQueued.payload) == "queued-after-start")
 
-        channel.shutdown(callID: 4_202)
-        channel.shutdown(callID: 4_203)
-        #expect(
-            try await completion.waitForCompletion(callID: 4_202).status
-                == .success
-        )
-        #expect(
-            try await completion.waitForCompletion(callID: 4_203).status
-                == .success
-        )
-    }
-
-    @Test("full runtime describes schema and persists canonical entities")
-    func executesSchemaMutationAndQueryOperations() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        let application = try RuntimeVerificationApplication(
-            persistentJobs: ()
-        )
-        #else
-        let application = try RuntimeVerificationApplication()
-        #endif
-        let runtime = CloudflareDatabaseRuntime(
-            application: application,
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-        await runtime.start(callID: 60)
-        #expect(completion.completion(callID: 60)?.status == .success)
-
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        let baseID = try Base.ID("runtime-verification")
-        let create = try await invoke(
-            DatabaseOperationCatalog.baseExecute,
-            target: .database,
-            request: BaseExecuteOperation.Request(
-                invocation: .create(
-                    baseID: baseID,
-                    placementID: try Base.Placement.ID("default"),
-                    initialGrants: [
-                        Security.Grant(
-                            subject: .principal("runtime-verification"),
-                            resource: .base(baseID),
-                            access: .all
-                        )
-                    ],
-                    expectedRevision: 0,
-                    idempotencyKey: "runtime-verification-base"
-                )
-            ),
-            requestID: 600,
-            callID: 600,
-            metadata: OperationRequestMetadata(
-                idempotencyKey: "runtime-verification-base"
-            ),
-            runtime: runtime,
-            completion: completion
-        )
-        guard case .job = create else {
-            Issue.record("Base creation did not return a persistent job")
-            return
-        }
-        await runtime.alarm(callID: 601)
-        #expect(completion.completion(callID: 601)?.status == .success)
-        let dataTarget = TestOperationTarget.base(baseID)
-        #else
-        let dataTarget = TestOperationTarget.database
-        #endif
-
-        let schema = try await invoke(
-            DatabaseOperationCatalog.schemaDescribe,
-            target: .database,
-            request: EmptyOperationPayload(),
-            requestID: 61,
-            callID: 61,
-            runtime: runtime,
-            completion: completion
-        )
-        let entity = try #require(
-            schema.entities.first {
-                $0.name == RuntimeVerificationDocument.persistableType
-            }
-        )
-        #expect(entity.fields.map(\.name) == ["id", "title"])
-
-        let identity = try EntityReference(
-            entity: RuntimeVerificationDocument.persistableType,
-            id: .string("document-1")
-        )
-        let mutation = try await invoke(
-            DatabaseOperationCatalog.mutationExecute,
-            target: dataTarget,
-            request: MutationExecuteOperation.Request(
-                input: .entities([
-                    MutationExecuteOperation.Change(
-                        kind: .insert,
-                        identity: identity,
-                        fields: try FieldObject([
-                            (key: "id", value: .string("document-1")),
-                            (key: "title", value: .string("Cloudflare runtime")),
-                        ])
-                    )
-                ])
-            ),
-            requestID: 62,
+        channel.invoke(
             callID: 62,
-            metadata: OperationRequestMetadata(
-                idempotencyKey: "runtime-document-1"
-            ),
-            runtime: runtime,
-            completion: completion
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("suspend")
         )
-        guard case .entities(let effects) = mutation.result else {
-            Issue.record("Entity mutation returned an RDF result")
-            return
-        }
-        #expect(effects.count == 1)
-        #expect(effects[0].identity == identity)
-
-        let query = try await invoke(
-            DatabaseOperationCatalog.queryExecute,
-            target: dataTarget,
-            request: QueryExecuteOperation.Request(
-                input: .text(
-                    language: .sql,
-                    statement:
-                        "SELECT id, title FROM RuntimeVerificationDocument"
-                )
-            ),
-            requestID: 63,
+        await application.waitUntilInvocationStarts()
+        channel.invoke(
             callID: 63,
-            runtime: runtime,
-            completion: completion
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("echo:queued-before-shutdown")
         )
-        guard case .rows(let page) = query else {
-            Issue.record("Entity query returned a non-row result")
-            return
-        }
-        #expect(page.rowCount == 1)
-        let titleColumnIndex = try #require(
-            page.columns.firstIndex { $0.name == "title" }
+        channel.invoke(
+            callID: 64,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("echo:over-capacity")
         )
-        let rows = try page.materializedRows(maximumCount: 1)
-        #expect(rows[0].values[titleColumnIndex] == .string("Cloudflare runtime"))
-    }
-
-    @Test("startup failures are redacted, retryable, and successful startup is single-use")
-    func retriesStartupFailure() async throws {
-        let redactionCompletion = RecordingCloudflareDatabaseCompletion()
-        let redactionRuntime = CloudflareDatabaseRuntime(
-            application: try InternalErrorRuntimeVerificationApplication(),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: redactionCompletion
-            )
-        )
-        await redactionRuntime.start(callID: 9)
-        let redactedFailure = try #require(
-            redactionCompletion.completion(callID: 9)
-        )
-        #expect(redactedFailure.status == .startupFailed)
         #expect(
-            string(from: redactedFailure.payload)
-                == "Database runtime startup failed"
+            try await completion.waitForCompletion(callID: 64).status
+                == .queueCapacityExceeded
         )
 
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
-            storageClient: FailingOnceReadinessClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
+        channel.shutdown(callID: 65)
+        channel.shutdown(callID: 67)
+        channel.invoke(
+            callID: 66,
+            contextBytes: bytes("runtime-verification"),
+            requestBytes: bytes("echo:after-shutdown")
+        )
+        #expect(
+            try await completion.waitForCompletion(callID: 66).status
+                == .notStarted
+        )
+        #expect(
+            try await completion.waitForCompletion(callID: 67).status
+                == .notStarted
         )
 
-        await runtime.start(callID: 10)
-        #expect(completion.completion(callID: 10)?.status == .startupFailed)
-
-        await runtime.start(callID: 11)
-        #expect(completion.completion(callID: 11)?.status == .success)
-
-        await runtime.start(callID: 12)
-        #expect(completion.completion(callID: 12)?.status == .alreadyStarted)
+        await application.releaseInvocation()
+        let active = try await completion.waitForCompletion(callID: 62)
+        #expect(active.status == .success)
+        #expect(string(from: active.payload) == "released")
+        let queued = try await completion.waitForCompletion(callID: 63)
+        #expect(queued.status == .success)
+        #expect(string(from: queued.payload) == "queued-before-shutdown")
+        #expect(
+            try await completion.waitForCompletion(callID: 65).status
+                == .success
+        )
+        await application.waitUntilSessionShutdown()
     }
 
-    @Test("requests require startup and obey frame limits")
-    func enforcesLifecycleAndRequestLimit() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let limits = try CloudflareDatabaseOperationLimits(
-            maximumRequestBytes: 4,
-            maximumResponseBytes: 4,
-            maximumErrorBytes:
-                CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
-            maximumPendingInvocations: 1
-        )
-        let runtime = CloudflareDatabaseRuntime(
+    private func makeRuntime(
+        completion: RecordingCloudflareDatabaseCompletion,
+        limits: CloudflareDatabaseRuntimeLimits = .default
+    ) throws -> CloudflareDatabaseRuntime {
+        CloudflareDatabaseRuntime(
             application: try RuntimeVerificationApplication(),
             storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
             completion: CloudflareDatabaseCompletionChannel(
                 completion: completion
             ),
             limits: limits
         )
-
-        await runtime.invoke(
-            callID: 20,
-            requestBytes: [1],
-            authorization: authorization
-        )
-        #expect(completion.completion(callID: 20)?.status == .notStarted)
-
-        await runtime.start(callID: 21)
-        #expect(completion.completion(callID: 21)?.status == .success)
-
-        await runtime.invoke(
-            callID: 22,
-            requestBytes: [0, 1, 2, 3, 4],
-            authorization: authorization
-        )
-        #expect(completion.completion(callID: 22)?.status == .requestTooLarge)
     }
 
-    @Test("shutdown closes operation admission and is idempotent")
-    func shutsDownAuthoritatively() async throws {
-        let neverStartedCompletion = RecordingCloudflareDatabaseCompletion()
-        let neverStartedRuntime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: neverStartedCompletion
-            )
-        )
-        await neverStartedRuntime.shutdown(callID: 67)
-        #expect(
-            neverStartedCompletion.completion(callID: 67)?.status == .success
-        )
-        await neverStartedRuntime.shutdown(callID: 68)
-        #expect(
-            neverStartedCompletion.completion(callID: 68)?.status == .success
-        )
-        await neverStartedRuntime.start(callID: 69)
-        #expect(
-            neverStartedCompletion.completion(callID: 69)?.status
-                == .notStarted
-        )
-
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        await runtime.start(callID: 70)
-        #expect(completion.completion(callID: 70)?.status == .success)
-
-        await runtime.shutdown(callID: 71)
-        #expect(completion.completion(callID: 71)?.status == .success)
-
-        let request = try encodeRequest(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            requestID: 72,
-            target: .database,
-            metadata: OperationRequestMetadata(),
-            request: EmptyOperationPayload()
-        )
-        await runtime.invoke(
-            callID: 72,
-            requestBytes: request,
-            authorization: authorization
-        )
-        #expect(completion.completion(callID: 72)?.status == .notStarted)
-
-        await runtime.shutdown(callID: 73)
-        #expect(completion.completion(callID: 73)?.status == .success)
-
-        await runtime.start(callID: 74)
-        #expect(completion.completion(callID: 74)?.status == .notStarted)
-    }
-
-    @Test("malformed DatabaseWire is rejected without poisoning the runtime")
-    func rejectsMalformedRequestFrame() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        await runtime.start(callID: 23)
-        await runtime.invoke(
-            callID: 24,
-            requestBytes: [0],
-            authorization: authorization
-        )
-
-        #expect(completion.completion(callID: 24)?.status == .invalidRequestFrame)
-
-        let validRequest = try encodeRequest(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            requestID: 25,
-            target: .database,
-            metadata: OperationRequestMetadata(),
-            request: EmptyOperationPayload()
-        )
-        await runtime.invoke(
-            callID: 25,
-            requestBytes: validRequest,
-            authorization: authorization
-        )
-        #expect(completion.completion(callID: 25)?.status == .success)
-    }
-
-    @Test("alarms enter the persistent job service through the runtime queue")
-    func runsScheduledWork() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let jobService = RecordingCloudflareDatabaseJobService()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(
-                jobService: jobService
-            ),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        await runtime.alarm(callID: 30)
-        #expect(completion.completion(callID: 30)?.status == .notStarted)
-
-        await runtime.start(callID: 31)
-        await runtime.alarm(callID: 32)
-
-        #expect(completion.completion(callID: 31)?.status == .success)
-        #expect(completion.completion(callID: 32)?.status == .success)
-        #expect(await jobService.runCount() == 1)
-    }
-
-    @Test("alarm failures remain failed so Durable Objects can retry them")
-    func propagatesScheduledWorkFailure() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        await runtime.start(callID: 40)
-        await runtime.alarm(callID: 41)
-
-        let completionRecord = try #require(
-            completion.completion(callID: 41)
-        )
-        #expect(completionRecord.status == .scheduledWorkFailed)
-        #expect(
-            string(from: completionRecord.payload)
-                == "scheduled_work_failure.v1;stage=unclassified;cause=unclassified"
-        )
-    }
-
-    @Test("alarm failures retain typed job diagnostics")
-    func preservesScheduledWorkDiagnostic() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(
-                jobService: ScheduledWorkFailureJobService(
-                    failure: .corruptedState
-                )
-            ),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            )
-        )
-
-        await runtime.start(callID: 42)
-        await runtime.alarm(callID: 43)
-
-        let completionRecord = try #require(
-            completion.completion(callID: 43)
-        )
-        #expect(completionRecord.status == .scheduledWorkFailed)
-        #expect(
-            string(from: completionRecord.payload)
-                == "scheduled_work_failure.v1;stage=processing_job;cause=job.corrupted_state"
-        )
-    }
-
-    @Test("the pending-operation limit includes the active operation")
-    func activeOperationConsumesQueueCapacity() async throws {
-        let completion = RecordingCloudflareDatabaseCompletion()
-        let jobService = SuspendedCloudflareDatabaseJobService()
-        let runtime = CloudflareDatabaseRuntime(
-            application: try RuntimeVerificationApplication(
-                jobService: jobService
-            ),
-            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
-            jobScheduler: DiscardingDatabaseJobScheduler(),
-            completion: CloudflareDatabaseCompletionChannel(
-                completion: completion
-            ),
-            limits: try CloudflareDatabaseOperationLimits(
-                maximumRequestBytes: 4 * 1_024,
-                maximumResponseBytes: 4 * 1_024,
-                maximumErrorBytes: 1_024,
-                maximumPendingInvocations: 1
-            )
-        )
-
-        await runtime.start(callID: 50)
-        let activeAlarm = Task {
-            await runtime.alarm(callID: 51)
-        }
-        await jobService.waitUntilScheduledWorkStarts()
-
-        let request = try encodeRequest(
-            DatabaseOperationCatalog.capabilitiesDescribe,
-            requestID: 52,
-            target: .database,
-            metadata: OperationRequestMetadata(),
-            request: EmptyOperationPayload()
-        )
-        await runtime.invoke(
-            callID: 52,
-            requestBytes: request,
-            authorization: authorization
-        )
-
-        #expect(
-            completion.completion(callID: 52)?.status
-                == .queueCapacityExceeded
-        )
-        await jobService.resume()
-        await activeAlarm.value
-        #expect(completion.completion(callID: 51)?.status == .success)
-    }
-
-    private func invoke<Request: Sendable, Response: Sendable>(
-        _ operation: DatabaseOperation<Request, Response>,
-        target: TestOperationTarget,
-        request: Request,
-        requestID: UInt64,
-        callID: UInt32,
-        metadata: OperationRequestMetadata = OperationRequestMetadata(),
-        runtime: CloudflareDatabaseRuntime,
-        completion: RecordingCloudflareDatabaseCompletion
-    ) async throws -> Response {
-        let requestBytes = try encodeRequest(
-            operation,
-            requestID: requestID,
-            target: target,
-            metadata: metadata,
-            request: request
-        )
-        await runtime.invoke(
-            callID: callID,
-            requestBytes: requestBytes,
-            authorization: authorization
-        )
-        let completed = try #require(completion.completion(callID: callID))
-        #expect(completed.status == .success)
-        let decoded = try DatabaseWireDecoder().decodeResponse(
-            operation,
-            from: completed.payload,
-            matching: requestID
-        )
-        switch decoded {
-        case .success(let response):
-            return response
-        case .failure(let error):
-            throw error
-        }
-    }
-
-    private func encodeRequest<Request: Sendable, Response: Sendable>(
-        _ operation: DatabaseOperation<Request, Response>,
-        requestID: UInt64,
-        target: TestOperationTarget,
-        metadata: OperationRequestMetadata,
-        request: Request
-    ) throws -> ByteString {
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        let wireTarget: DatabaseOperationTarget
-        switch target {
-        case .database:
-            wireTarget = .database
-        case .base(let baseID):
-            wireTarget = .base(baseID)
-        }
-        return try DatabaseWireEncoder().encodeRequest(
-            operation,
-            requestID: requestID,
-            target: wireTarget,
-            metadata: metadata,
-            request: request
-        )
-        #else
-        _ = target
-        return try DatabaseWireEncoder().encodeRequest(
-            operation,
-            requestID: requestID,
-            metadata: metadata,
-            request: request
-        )
-        #endif
+    private func bytes(_ value: String) -> ByteString {
+        ByteString(Array(value.utf8))
     }
 
     private func string(from bytes: ByteString) -> String {

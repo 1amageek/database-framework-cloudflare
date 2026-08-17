@@ -84,25 +84,7 @@ databaseRuntimeTraits.insert(
         enabledTraits: databaseRuntimeFeatureNames
     )
 )
-databaseRuntimeTraits.insert(
-    .default(enabledTraits: ["AllRuntimeFeatures"])
-)
-
 let databaseFrameworkDependencyTraits = Set(
-    databaseRuntimeFeatureNames.map {
-        Package.Dependency.Trait.trait(
-            name: $0,
-            condition: .when(traits: [$0])
-        )
-    }
-).union([
-    .trait(
-        name: "MultipleBases",
-        condition: .when(traits: ["MultipleBases"])
-    ),
-])
-
-let databaseServerDependencyTraits = Set(
     databaseRuntimeFeatureNames.map {
         Package.Dependency.Trait.trait(
             name: $0,
@@ -140,22 +122,17 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0814.0",
+            from: "26.0817.0",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
-            url: "https://github.com/1amageek/database-server.git",
-            from: "26.0814.0",
-            traits: databaseServerDependencyTraits
-        ),
-        .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0814.0",
+            from: "26.0817.0",
             traits: databaseKitDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0807.0"
+            from: "26.0817.0"
         ),
     ],
     targets: [
@@ -164,13 +141,7 @@ let package = Package(
             dependencies: [
                 "CloudflareDatabaseTaskScheduling",
                 .product(name: "DatabaseEngine", package: "database-framework"),
-                .product(name: "DatabaseServerRuntime", package: "database-server"),
-                .product(
-                    name: "DatabaseServerFoundation",
-                    package: "database-server",
-                    condition: .when(platforms: hostPlatforms)
-                ),
-                .product(name: "DatabaseWire", package: "database-kit"),
+                .product(name: "DatabaseKit", package: "database-kit"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
@@ -204,16 +175,10 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
-                .product(name: "DatabaseServerRuntime", package: "database-server"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
                     condition: .when(traits: ["VectorIndexes"])
-                ),
-                .product(
-                    name: "DatabaseServerFoundation",
-                    package: "database-server",
-                    condition: .when(platforms: hostPlatforms)
                 ),
                 .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
@@ -261,18 +226,11 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
-                .product(name: "DatabaseServerRuntime", package: "database-server"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",
                     condition: .when(traits: ["VectorIndexes"])
                 ),
-                .product(
-                    name: "DatabaseServerFoundation",
-                    package: "database-server",
-                    condition: .when(platforms: hostPlatforms)
-                ),
-                .product(name: "DatabaseWire", package: "database-kit"),
                 .product(name: "DatabaseTypes", package: "database-types"),
                 .product(name: "CloudflareDurableObjectStorage", package: "storage-kit"),
                 .product(name: "CloudflareDurableObjectStorageWire", package: "storage-kit"),

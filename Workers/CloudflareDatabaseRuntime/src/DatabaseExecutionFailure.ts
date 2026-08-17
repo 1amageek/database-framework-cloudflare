@@ -10,6 +10,7 @@ export const databaseExecutionFailureCode = Object.freeze({
   requestTooLarge: "database.execution.request_too_large",
   capacityExhausted: "database.execution.capacity_exhausted",
   timedOut: "database.execution.timed_out",
+  cancelled: "database.execution.cancelled",
   invalidResponse: "database.execution.invalid_response",
   runtimeUnavailable: "database.execution.runtime_unavailable",
   runtimeFailure: "database.execution.runtime_failure",
@@ -58,8 +59,8 @@ function classifyDatabaseExecutionFailure(
   }
   if (error instanceof DatabaseRuntimeInvocationError) {
     switch (error.status) {
-      case databaseCompletionStatus.invalidRequestFrame:
-        return databaseExecutionFailureCode.invalidRequest;
+      case databaseCompletionStatus.applicationFailed:
+        return databaseExecutionFailureCode.runtimeFailure;
       case databaseCompletionStatus.requestTooLarge:
         return databaseExecutionFailureCode.requestTooLarge;
       case databaseCompletionStatus.responseTooLarge:
@@ -71,14 +72,17 @@ function classifyDatabaseExecutionFailure(
       case databaseCompletionStatus.runtimeFailed:
       case databaseCompletionStatus.success:
         return databaseExecutionFailureCode.runtimeFailure;
-      case databaseCompletionStatus.scheduledWorkFailed:
+      case databaseCompletionStatus.alarmFailed:
         return databaseExecutionFailureCode.runtimeFailure;
+      case databaseCompletionStatus.contextTooLarge:
+        return databaseExecutionFailureCode.requestTooLarge;
       case databaseCompletionStatus.notStarted:
       case databaseCompletionStatus.alreadyStarted:
       case databaseCompletionStatus.startupInProgress:
       case databaseCompletionStatus.startupFailed:
-      case databaseCompletionStatus.cancelled:
         return databaseExecutionFailureCode.runtimeUnavailable;
+      case databaseCompletionStatus.cancelled:
+        return databaseExecutionFailureCode.cancelled;
     }
   }
   return databaseExecutionFailureCode.runtimeUnavailable;

@@ -13,6 +13,12 @@ private let runtimeEntrypoint: CloudflareDatabaseRuntimeEntrypoint = {
     }
 }()
 
+@_expose(wasm, "database_abi_version")
+@_cdecl("database_abi_version")
+func databaseRuntimeABIVersion() -> UInt32 {
+    CloudflareDatabaseRuntimeEntrypoint.abiVersion
+}
+
 @_expose(wasm, "database_alloc")
 @_cdecl("database_alloc")
 func reserveInvocationPayload(byteCount: UInt32) -> UInt32 {
@@ -41,15 +47,15 @@ func startDatabaseRuntime(callID: UInt32) {
 @_cdecl("database_invoke")
 func invokeDatabaseRuntime(
     callID: UInt32,
-    authorizationAddress: UInt32,
-    authorizationByteCount: UInt32,
+    contextAddress: UInt32,
+    contextByteCount: UInt32,
     requestAddress: UInt32,
     requestByteCount: UInt32
 ) {
     runtimeEntrypoint.invoke(
         callID: callID,
-        authorizationAddress: authorizationAddress,
-        authorizationByteCount: authorizationByteCount,
+        contextAddress: contextAddress,
+        contextByteCount: contextByteCount,
         requestAddress: requestAddress,
         requestByteCount: requestByteCount
     )

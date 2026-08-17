@@ -1,10 +1,12 @@
 import type { DatabaseRuntimeInstance } from "./DatabaseRuntimeInstance";
 import type { DatabaseRuntimeEndpoints } from "./DatabaseRuntimeTypes";
+import { databaseRuntimeABIVersion } from "./DatabaseRuntimeABIVersion";
 
 export function requireDatabaseRuntimeEndpoints(
   runtimeInstance: DatabaseRuntimeInstance
 ): DatabaseRuntimeEndpoints {
   const unvalidatedEndpoints = runtimeInstance.endpoints;
+  const abiVersionEndpoint = unvalidatedEndpoints.database_abi_version;
   const reservePayloadEndpoint = unvalidatedEndpoints.database_alloc;
   const releasePayloadEndpoint = unvalidatedEndpoints.database_dealloc;
   const startEndpoint = unvalidatedEndpoints.database_start;
@@ -14,6 +16,9 @@ export function requireDatabaseRuntimeEndpoints(
   const runScheduledTaskEndpoint = unvalidatedEndpoints.database_executor_run;
   const resumeClockWaitEndpoint = unvalidatedEndpoints.database_clock_resume;
   const addressSpace = unvalidatedEndpoints.memory;
+  if (typeof abiVersionEndpoint !== "function") {
+    throw new Error("runtime instance does not export database_abi_version");
+  }
   if (typeof reservePayloadEndpoint !== "function") {
     throw new Error("runtime instance does not export database_alloc");
   }
@@ -41,7 +46,14 @@ export function requireDatabaseRuntimeEndpoints(
   if (!(addressSpace instanceof WebAssembly.Memory)) {
     throw new Error("runtime instance does not export memory");
   }
+  const reportedABIVersion = (abiVersionEndpoint as () => number)();
+  if (reportedABIVersion !== databaseRuntimeABIVersion) {
+    throw new Error(
+      `runtime ABI version ${reportedABIVersion} does not match required version ${databaseRuntimeABIVersion}`
+    );
+  }
   return {
+    abiVersion: abiVersionEndpoint as () => number,
     reservePayload: reservePayloadEndpoint as (byteCount: number) => number,
     releasePayload: releasePayloadEndpoint as (
       payloadAddress: number,
@@ -50,8 +62,8 @@ export function requireDatabaseRuntimeEndpoints(
     start: startEndpoint as (callID: number) => void,
     invoke: invokeEndpoint as (
       callID: number,
-      authorizationAddress: number,
-      authorizationByteCount: number,
+      contextAddress: number,
+      contextByteCount: number,
       requestAddress: number,
       requestByteCount: number
     ) => void,

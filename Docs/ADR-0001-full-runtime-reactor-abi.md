@@ -1,6 +1,6 @@
 # ADR-0001: Full Database Runtime Boundary
 
-- Status: Accepted
+- Status: Superseded by [ADR-0003](ADR-0003-framework-adapter-and-standalone-server-boundaries.md)
 - Date: 2026-07-18
 - Protocol: Database reactor ABI v2
 
@@ -100,9 +100,11 @@ provider, persistent job operations are not advertised.
 
 ## Completion statuses
 
-`Protocol/database-completion-status-v1.json` is the canonical machine-readable
-v1 status vector. Swift and TypeScript tests must both reject any divergence
-from this vector.
+`Protocol/database-completion-status-v1.json` was the canonical
+machine-readable v1 status vector for this decision. ADR-0003 removed that
+artifact together with ABI v2 compatibility; the active status contract is
+the ABI v3 vector. Swift and TypeScript tests previously rejected divergence
+from the v1 vector described below.
 
 | Status | Value | Runtime meaning |
 |---|---:|---|

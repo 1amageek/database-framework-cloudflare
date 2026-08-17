@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { databaseRuntimeABIVersion } from "../src/DatabaseRuntimeABIVersion";
 import type { DatabaseRuntimeEndpoints } from "../src/DatabaseRuntimeTypes";
 import { DatabaseTaskScheduler } from "../src/DatabaseTaskScheduler";
 import {
@@ -200,6 +201,7 @@ function runtimeEndpoints(
   runScheduledTask: (taskID: number) => void
 ): DatabaseRuntimeEndpoints {
   return {
+    abiVersion: () => databaseRuntimeABIVersion,
     reservePayload: () => 0,
     releasePayload: () => undefined,
     start: () => undefined,

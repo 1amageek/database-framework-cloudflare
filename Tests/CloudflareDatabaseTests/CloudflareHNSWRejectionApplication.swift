@@ -5,31 +5,26 @@ import CloudflareDurableObjectStorageWire
 import DatabaseEngine
 import DatabaseKit
 import DatabaseRuntime
-import DatabaseServerRuntime
-import DatabaseServerFoundation
-import StorageKitSystemClock
+import DatabaseTypes
 import VectorIndex
 
 final class CloudflareHNSWRejectionApplication:
-    CloudflareDatabaseOperationApplication {
-    let partitionIdentity: StoragePartitionIdentity
-    let storageLimits = CloudflareDurableObjectLimits.default
+    CloudflareDatabaseApplication,
+    Sendable {
+    private let partitionIdentity: StoragePartitionIdentity
     #if CLOUDFLARE_TEST_MULTIPLE_BASES
-    let storageLayout: CloudflareDatabaseStorageLayout
+    private let storageLayout: CloudflareDatabaseStorageLayout
     #endif
-    let jobAuthorizationProvider:
-        AnyCloudflareDatabaseJobAuthorizationProvider? = nil
-
     private let indexConfiguration: any IndexRuntimeConfiguration
 
     init(
         indexConfiguration: (any IndexRuntimeConfiguration)? = nil
     ) throws {
-        partitionIdentity = try StoragePartitionIdentity(
+        self.partitionIdentity = try StoragePartitionIdentity(
             databaseID: "cloudflare-hnsw-rejection"
         )
         #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        storageLayout = try makeCloudflareTestStorageLayout(
+        self.storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "hnsw-rejection"
         )
         #endif
@@ -40,31 +35,56 @@ final class CloudflareHNSWRejectionApplication:
             )
     }
 
-    func makeContainerDefinition() async throws
-        -> DatabaseContainerDefinition {
-        DatabaseContainerDefinition(
-            schema: try Schema(
-                entities: [try CloudflareHNSWRejectionDocument.schemaEntity]
-            ),
-            runtimeConfiguration: try DatabaseFrameworkRuntime.configuration(
-                entityRuntimes: [
-                    try DatabaseFrameworkRuntime.entity(
-                        CloudflareHNSWRejectionDocument.self
-                    )
-                ]
-            ),
-            security: .enabled(),
-            monotonicClock: SystemStorageClock(),
-            wallClock: RealtimeDatabaseWallClock(),
-            indexConfigurations: [indexConfiguration]
+    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
+        let schema = try Schema(
+            entities: [try CloudflareHNSWRejectionDocument.schemaEntity]
         )
+        let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
+            entityRuntimes: [
+                try DatabaseFrameworkRuntime.entity(
+                    CloudflareHNSWRejectionDocument.self
+                )
+            ]
+        )
+        let indexConfigurations: [any IndexRuntimeConfiguration] = [
+            indexConfiguration
+        ]
+        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        return CloudflareDatabaseDefinition(
+            partitionIdentity: partitionIdentity,
+            storageLayout: storageLayout,
+            schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
+            security: .enabled(),
+            indexConfigurations: indexConfigurations
+        )
+        #else
+        return CloudflareDatabaseDefinition(
+            partitionIdentity: partitionIdentity,
+            schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
+            security: .enabled(),
+            indexConfigurations: indexConfigurations
+        )
+        #endif
     }
 
-    func makeOperationConfiguration(
+    func makeSession(
         for container: DBContainer
-    ) async throws -> DatabaseOperationConfiguration {
+    ) async throws -> RejectedHNSWSession {
         _ = container
-        throw RuntimeVerificationError.unexpectedServiceOperation
+        return RejectedHNSWSession()
     }
+}
+
+struct RejectedHNSWSession: CloudflareDatabaseSession, Sendable {
+    func respond(
+        to invocation: CloudflareDatabaseInvocation
+    ) async throws -> ByteString {
+        _ = invocation
+        throw RuntimeVerificationError.invalidApplicationRequest
+    }
+
+    func shutdown() async {}
 }
 #endif

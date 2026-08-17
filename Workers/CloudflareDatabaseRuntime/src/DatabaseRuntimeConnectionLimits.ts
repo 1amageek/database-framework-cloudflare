@@ -1,4 +1,7 @@
-import { databaseWireMaximumFrameBytes } from "./DatabaseRuntimeLimits";
+import {
+  databaseMaximumPayloadBytes,
+  defaultDatabaseMaxContextBytes,
+} from "./DatabaseRuntimeLimits";
 
 export class DatabaseRuntimeConnectionLimits {
   static readonly maximumPendingInvocations = 1024;
@@ -12,6 +15,7 @@ export class DatabaseRuntimeConnectionLimits {
   static readonly maximumWasiIovecBytes = 16 * 1024 * 1024;
   static readonly maximumFailureBytes = 16 * 1024;
 
+  readonly maximumContextBytes: number;
   readonly maximumRequestBytes: number;
   readonly maximumResponseBytes: number;
   readonly maximumFailureBytes: number;
@@ -28,6 +32,7 @@ export class DatabaseRuntimeConnectionLimits {
   readonly maximumWasiIovecBytes: number;
 
   constructor(options: {
+    maximumContextBytes?: number;
     maximumRequestBytes: number;
     maximumResponseBytes: number;
     maximumFailureBytes?: number;
@@ -43,11 +48,15 @@ export class DatabaseRuntimeConnectionLimits {
     maximumWasiIovecCount?: number;
     maximumWasiIovecBytes?: number;
   }) {
-    this.maximumRequestBytes = validateFrameLimit(
+    this.maximumContextBytes = validatePayloadLimit(
+      options.maximumContextBytes ?? defaultDatabaseMaxContextBytes,
+      "maximumContextBytes"
+    );
+    this.maximumRequestBytes = validatePayloadLimit(
       options.maximumRequestBytes,
       "maximumRequestBytes"
     );
-    this.maximumResponseBytes = validateFrameLimit(
+    this.maximumResponseBytes = validatePayloadLimit(
       options.maximumResponseBytes,
       "maximumResponseBytes"
     );
@@ -57,12 +66,12 @@ export class DatabaseRuntimeConnectionLimits {
       "maximumFailureBytes",
       DatabaseRuntimeConnectionLimits.maximumFailureBytes
     );
-    this.maximumStorageRequestBytes = validateFrameLimit(
-      options.maximumStorageRequestBytes ?? databaseWireMaximumFrameBytes,
+    this.maximumStorageRequestBytes = validatePayloadLimit(
+      options.maximumStorageRequestBytes ?? databaseMaximumPayloadBytes,
       "maximumStorageRequestBytes"
     );
-    this.maximumStorageResponseBytes = validateFrameLimit(
-      options.maximumStorageResponseBytes ?? databaseWireMaximumFrameBytes,
+    this.maximumStorageResponseBytes = validatePayloadLimit(
+      options.maximumStorageResponseBytes ?? databaseMaximumPayloadBytes,
       "maximumStorageResponseBytes"
     );
     this.maximumPendingInvocations = validatePendingInvocations(
@@ -81,7 +90,11 @@ export class DatabaseRuntimeConnectionLimits {
       "maximumPayloadBytesPerInvocationSet",
       DatabaseRuntimeConnectionLimits.maximumPayloadBytesPerInvocationSet
     );
-    const minimumPayloadByteLimit = this.maximumRequestBytes;
+    const minimumPayloadByteLimit = this.maximumContextBytes
+      + this.maximumRequestBytes;
+    if (!Number.isSafeInteger(minimumPayloadByteLimit)) {
+      throw new RangeError("combined invocation payload limit is invalid");
+    }
     if (this.maximumPayloadBytesPerInvocationSet < minimumPayloadByteLimit) {
       throw new RangeError(
         `maximumPayloadBytesPerInvocationSet must be at least ${minimumPayloadByteLimit}`
@@ -127,12 +140,12 @@ function validateTimeout(value: number): number {
   return value;
 }
 
-function validateFrameLimit(value: number, field: string): number {
+function validatePayloadLimit(value: number, field: string): number {
   if (!Number.isInteger(value)
       || value <= 0
-      || value > databaseWireMaximumFrameBytes) {
+      || value > databaseMaximumPayloadBytes) {
     throw new RangeError(
-      `${field} must be an integer from 1 through ${databaseWireMaximumFrameBytes}`
+      `${field} must be an integer from 1 through ${databaseMaximumPayloadBytes}`
     );
   }
   return value;

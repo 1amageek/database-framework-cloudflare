@@ -14,7 +14,7 @@ export class DatabaseRuntimeEntryQueue {
   private queueTail: Promise<void> = Promise.resolve();
   private admittedInvocationCount = 0;
   private admittedInvocationBytes = 0;
-  private admittedScheduledWorkCount = 0;
+  private admittedAlarmCount = 0;
 
   constructor(options: {
     maximumPendingInvocations: number;
@@ -40,8 +40,8 @@ export class DatabaseRuntimeEntryQueue {
     return this.admittedInvocationBytes;
   }
 
-  get pendingScheduledWorkCount(): number {
-    return this.admittedScheduledWorkCount;
+  get pendingAlarmCount(): number {
+    return this.admittedAlarmCount;
   }
 
   /**
@@ -50,10 +50,10 @@ export class DatabaseRuntimeEntryQueue {
    */
   enqueueInvocation<Response>(
     requestBytes: Uint8Array,
-    authorizationBytes: Uint8Array,
+    contextBytes: Uint8Array,
     operation: (
       ownedRequestBytes: Uint8Array,
-      ownedAuthorizationBytes: Uint8Array
+      ownedContextBytes: Uint8Array
     ) => Promise<Response> | Response
   ): Promise<Response> {
     if (this.admittedInvocationCount >= this.maximumPendingInvocations) {
@@ -71,7 +71,7 @@ export class DatabaseRuntimeEntryQueue {
     // request is a view. Account for the memory actually kept alive instead
     // of silently allowing a small subarray to bypass the aggregate limit.
     const retainedByteCount = requestBytes.buffer.byteLength
-      + authorizationBytes.buffer.byteLength;
+      + contextBytes.buffer.byteLength;
     const nextPendingBytes = this.admittedInvocationBytes + retainedByteCount;
     if (!Number.isSafeInteger(nextPendingBytes)
         || nextPendingBytes > this.maximumPendingInvocationBytes) {
@@ -86,12 +86,12 @@ export class DatabaseRuntimeEntryQueue {
     }
 
     const ownedRequestBytes = requestBytes;
-    const ownedAuthorizationBytes = authorizationBytes;
+    const ownedContextBytes = contextBytes;
     this.admittedInvocationCount += 1;
     this.admittedInvocationBytes = nextPendingBytes;
 
     const operationPromise = this.queueTail.then(
-      () => operation(ownedRequestBytes, ownedAuthorizationBytes)
+      () => operation(ownedRequestBytes, ownedContextBytes)
     );
     const settledPromise = operationPromise.then(
       (response) => {
@@ -112,17 +112,17 @@ export class DatabaseRuntimeEntryQueue {
    * capacity while preserving one FIFO across both entry kinds. Durable
    * Object alarm events are platform-owned and do not retain request bytes.
    */
-  enqueueScheduledWork(
+  enqueueAlarm(
     operation: () => Promise<void> | void
   ): Promise<void> {
-    this.admittedScheduledWorkCount += 1;
+    this.admittedAlarmCount += 1;
     const operationPromise = this.queueTail.then(operation);
     const settledPromise = operationPromise.then(
       () => {
-        this.admittedScheduledWorkCount -= 1;
+        this.admittedAlarmCount -= 1;
       },
       (error: unknown) => {
-        this.admittedScheduledWorkCount -= 1;
+        this.admittedAlarmCount -= 1;
         throw error;
       }
     );

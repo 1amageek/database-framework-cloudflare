@@ -11,8 +11,9 @@ export const databaseCompletionStatus = Object.freeze({
   startupFailed: 9,
   cancelled: 10,
   runtimeFailed: 11,
-  invalidRequestFrame: 12,
-  scheduledWorkFailed: 13,
+  contextTooLarge: 12,
+  alarmFailed: 13,
+  applicationFailed: 14,
 } as const);
 
 export type DatabaseCompletionStatus =

@@ -1,26 +1,17 @@
 export { CloudflareDatabaseDurableObject } from "./CloudflareDatabaseDurableObject";
-export {
-  databaseAuthorizationMaximumFrameBytes,
-  databaseAuthorizationMaximumIdentifierBytes,
-  databaseAuthorizationMaximumRoleBytes,
-  databaseAuthorizationMaximumRoleCount,
-  emptyDatabaseAuthorizationClaims,
-  encodeDatabaseAuthenticatedPrincipal,
-} from "./DatabaseAuthenticatedPrincipal";
-export type {
-  DatabaseAuthenticatedPrincipal,
-} from "./DatabaseAuthenticatedPrincipal";
+export { databaseRuntimeABIVersion } from "./DatabaseRuntimeABIVersion";
 export { databaseCompletionStatus } from "./DatabaseCompletionStatus";
 export type { DatabaseAlarmScheduler } from "./DatabaseAlarmScheduler";
 export { DatabaseAlarmScheduleError } from "./DatabaseAlarmScheduleError";
 export { databaseAlarmTimestampMilliseconds } from "./DatabaseAlarmTimestamp";
 export { DurableObjectDatabaseAlarmScheduler } from "./DurableObjectDatabaseAlarmScheduler";
 export {
-  databaseWireMaximumFrameBytes,
+  databaseMaximumPayloadBytes,
   databaseMaximumPendingRequests,
   databaseMaximumQueuedRequestBytes,
   databaseMaximumRequestStreamChunks,
   databaseMaximumInvocationTimeoutMilliseconds,
+  databaseMaxContextBytes,
   databaseMaxPendingRequests,
   databaseMaxQueuedRequestBytes,
   databaseMaxRequestBytes,
@@ -29,14 +20,13 @@ export {
   DatabaseRuntimeLimitConfigurationError,
   DatabaseInvalidContentLengthError,
   DatabasePayloadTooLargeError,
-  hasDatabaseWireContentType,
   invalidContentLengthResponse,
   payloadTooLargeResponse,
-  readBoundedRequestBytes,
+  readBoundedPayloadBytes,
   rejectOversizedContentLength,
 } from "./DatabaseRuntimeLimits";
 export type { DatabaseRuntimeLimitEnvironment } from "./DatabaseRuntimeLimits";
-export { DatabaseRequestStreamChunkLimitError } from "./DatabaseRequestStreamChunkLimitError";
+export { DatabasePayloadStreamChunkLimitError } from "./DatabasePayloadStreamChunkLimitError";
 export {
   databaseInvocationCapacityReason,
   DatabaseInvocationCapacityError,

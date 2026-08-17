@@ -1,63 +1,57 @@
 #if arch(wasm32)
-import CloudflareDurableObjectStorage
-import CloudflareDurableObjectStorageWire
-import DatabaseKit
-import DatabaseServerRuntime
 import DatabaseTypes
 import Synchronization
 
 /// Application-facing owner of one persistent database runtime instance.
 public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
-    private let application: AnyDatabaseOperationApplication
-    private let partitionIdentity: StoragePartitionIdentity
-    private let storageLimits: CloudflareDurableObjectLimits
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
-    private let storageLayout: CloudflareDatabaseStorageLayout
-    #endif
-    private let jobAuthorizationProvider:
-        AnyCloudflareDatabaseJobAuthorizationProvider?
+    public static let abiVersion: UInt32 = 3
+
+    private let application: AnyCloudflareDatabaseApplication
     private let completion: CloudflareDatabaseCompletionChannel
-    private let limits: CloudflareDatabaseOperationLimits
+    private let limits: CloudflareDatabaseRuntimeLimits
     private let storageTransportLimits: CloudflareDatabaseStorageTransportLimits
     private let invocationPayloadOwnership: DatabaseInvocationPayloadOwnership
-    private let runtimeCommandChannel = Mutex<CloudflareDatabaseRuntimeCommandChannel?>(nil)
+    private let runtimeCommandChannel =
+        Mutex<CloudflareDatabaseRuntimeCommandChannel?>(nil)
 
-    public init<Application: CloudflareDatabaseOperationApplication>(
+    public init<Application: CloudflareDatabaseApplication>(
         application: Application,
         completion: CloudflareDatabaseCompletionChannel =
             CloudflareDatabaseCompletionChannel(),
-        maximumRequestBytes: Int = 16 * 1_024 * 1_024,
-        maximumResponseBytes: Int = 16 * 1_024 * 1_024,
+        maximumContextBytes: Int = 1 * 1_024 * 1_024,
+        maximumRequestBytes: Int = 4 * 1_024 * 1_024,
+        maximumResponseBytes: Int = 4 * 1_024 * 1_024,
         maximumErrorBytes: Int = 4 * 1_024,
         maximumPendingInvocations: Int = 64,
         maximumStorageRequestBytes: Int = 16 * 1_024 * 1_024,
         maximumStorageResponseBytes: Int = 16 * 1_024 * 1_024
     ) throws {
-        try CloudflareDatabaseOperationLimits.validate(
+        try CloudflareDatabaseRuntimeLimits.validate(
+            maximumContextBytes,
+            field: "maximumContextBytes",
+            maximum: CloudflareDatabaseRuntimeLimits.maximumPayloadBytes
+        )
+        try CloudflareDatabaseRuntimeLimits.validate(
             maximumRequestBytes,
             field: "maximumRequestBytes",
-            maximum: CloudflareDatabaseOperationLimits
-                .protocolMaximumFrameBytes
+            maximum: CloudflareDatabaseRuntimeLimits.maximumPayloadBytes
         )
-        try CloudflareDatabaseOperationLimits.validate(
+        try CloudflareDatabaseRuntimeLimits.validate(
             maximumResponseBytes,
             field: "maximumResponseBytes",
-            maximum: CloudflareDatabaseOperationLimits
-                .protocolMaximumFrameBytes
+            maximum: CloudflareDatabaseRuntimeLimits.maximumPayloadBytes
         )
-        try CloudflareDatabaseOperationLimits.validate(
+        try CloudflareDatabaseRuntimeLimits.validate(
             maximumErrorBytes,
             field: "maximumErrorBytes",
-            minimum: CloudflareDatabaseOperationLimits
-                .protocolMinimumErrorBytes,
-            maximum: CloudflareDatabaseOperationLimits
-                .protocolMaximumErrorBytes
+            minimum: CloudflareDatabaseRuntimeLimits.minimumErrorBytes,
+            maximum: CloudflareDatabaseRuntimeLimits.maximumErrorBytes
         )
-        try CloudflareDatabaseOperationLimits.validate(
+        try CloudflareDatabaseRuntimeLimits.validate(
             maximumPendingInvocations,
             field: "maximumPendingInvocations",
-            maximum: CloudflareDatabaseOperationLimits
-                .protocolMaximumPendingInvocations
+            maximum: CloudflareDatabaseRuntimeLimits
+                .maximumPendingInvocations
         )
         try CloudflareDatabaseStorageTransportLimits.validate(
             maximumStorageRequestBytes,
@@ -67,15 +61,10 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             maximumStorageResponseBytes,
             field: "maximumStorageResponseBytes"
         )
-        self.application = AnyDatabaseOperationApplication(application)
-        self.partitionIdentity = application.partitionIdentity
-        self.storageLimits = application.storageLimits
-        #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
-        self.storageLayout = application.storageLayout
-        #endif
-        self.jobAuthorizationProvider = application.jobAuthorizationProvider
+        self.application = AnyCloudflareDatabaseApplication(application)
         self.completion = completion
-        self.limits = CloudflareDatabaseOperationLimits(
+        self.limits = CloudflareDatabaseRuntimeLimits(
+            maximumContextBytes: maximumContextBytes,
             maximumRequestBytes: maximumRequestBytes,
             maximumResponseBytes: maximumResponseBytes,
             maximumErrorBytes: maximumErrorBytes,
@@ -89,7 +78,7 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         )
         self.invocationPayloadOwnership = DatabaseInvocationPayloadOwnership(
             maximumPayloadBytes: max(
-                maximumRequestBytes,
+                max(maximumContextBytes, maximumRequestBytes),
                 maximumStorageResponseBytes + MemoryLayout<UInt32>.size
             ),
             maximumOwnedPayloadCount: 65_536,
@@ -121,42 +110,17 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
             return
         }
         CloudflareDatabaseTaskScheduler.install()
-        guard storageTransportLimits.maximumRequestBytes > 0,
-              storageTransportLimits.maximumResponseBytes > 0 else {
-            completeFailure(
-                callID: callID,
-                status: .startupFailed,
-                message: "Invalid storage transport limits: request=\(storageTransportLimits.maximumRequestBytes), response=\(storageTransportLimits.maximumResponseBytes)"
-            )
-            return
-        }
         do {
             let commandChannel = try runtimeCommandChannel.withLock { channel in
                 if let channel {
                     return channel
                 }
-                #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
                 let createdChannel = try CloudflareDatabaseRuntimeCommandChannel(
                     application: application,
-                    partitionIdentity: partitionIdentity,
-                    storageLimits: storageLimits,
-                    storageLayout: storageLayout,
-                    jobAuthorizationProvider: jobAuthorizationProvider,
                     completion: completion,
                     limits: limits,
                     storageTransportLimits: storageTransportLimits
                 )
-                #else
-                let createdChannel = try CloudflareDatabaseRuntimeCommandChannel(
-                    application: application,
-                    partitionIdentity: partitionIdentity,
-                    storageLimits: storageLimits,
-                    jobAuthorizationProvider: jobAuthorizationProvider,
-                    completion: completion,
-                    limits: limits,
-                    storageTransportLimits: storageTransportLimits
-                )
-                #endif
                 channel = createdChannel
                 return createdChannel
             }
@@ -172,20 +136,29 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
 
     public func invoke(
         callID: UInt32,
-        authorizationAddress: UInt32,
-        authorizationByteCount: UInt32,
+        contextAddress: UInt32,
+        contextByteCount: UInt32,
         requestAddress: UInt32,
         requestByteCount: UInt32
     ) {
-        var authorizationBytes: ByteString?
-        var requestBytes: ByteString?
+        let contextBytes: ByteString
+        let requestBytes: ByteString
         do {
-            authorizationBytes = try invocationPayloadOwnership.consumePayload(
-                payloadAddress: authorizationAddress,
-                byteCount: authorizationByteCount
+            contextBytes = try invocationPayloadOwnership.consumePayload(
+                payloadAddress: contextAddress,
+                byteCount: contextByteCount
             )
         } catch {
-            authorizationBytes = nil
+            consumeOrReleaseRequestPayload(
+                requestAddress: requestAddress,
+                requestByteCount: requestByteCount
+            )
+            completeFailure(
+                callID: callID,
+                status: .invalidPayload,
+                message: "Application context payload is invalid"
+            )
+            return
         }
         do {
             requestBytes = try invocationPayloadOwnership.consumePayload(
@@ -193,26 +166,10 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
                 byteCount: requestByteCount
             )
         } catch {
-            requestBytes = nil
-        }
-        guard let authorizationBytes, let requestBytes else {
             completeFailure(
                 callID: callID,
                 status: .invalidPayload,
-                message: "Database invocation payload is invalid"
-            )
-            return
-        }
-        let authorization: AuthorizationContext
-        do {
-            authorization = try CloudflareDatabaseAuthorizationCodec.decode(
-                authorizationBytes
-            )
-        } catch {
-            completeFailure(
-                callID: callID,
-                status: .invalidPayload,
-                message: "Database authorization payload is invalid"
+                message: "Application request payload is invalid"
             )
             return
         }
@@ -226,8 +183,8 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
         }
         commandChannel.invoke(
             callID: callID,
-            requestBytes: requestBytes,
-            authorization: authorization
+            contextBytes: contextBytes,
+            requestBytes: requestBytes
         )
     }
 
@@ -273,6 +230,21 @@ public final class CloudflareDatabaseRuntimeEntrypoint: Sendable {
 
     public static func resumeScheduledWait(waitID: UInt32) {
         CloudflareDatabaseMonotonicClock.resume(waitID: waitID)
+    }
+
+    private func consumeOrReleaseRequestPayload(
+        requestAddress: UInt32,
+        requestByteCount: UInt32
+    ) {
+        do {
+            _ = try invocationPayloadOwnership.consumePayload(
+                payloadAddress: requestAddress,
+                byteCount: requestByteCount
+            )
+        } catch {
+            // The context failure remains authoritative. A malformed second
+            // payload has already released any matching reservation.
+        }
     }
 
     private func completeFailure(

@@ -1,14 +1,15 @@
-import { DatabaseRequestStreamChunkLimitError } from "./DatabaseRequestStreamChunkLimitError";
+import { DatabasePayloadStreamChunkLimitError } from "./DatabasePayloadStreamChunkLimitError";
 
-export { DatabaseRequestStreamChunkLimitError };
+export { DatabasePayloadStreamChunkLimitError };
 
-export const databaseWireMaximumFrameBytes = 16 * 1024 * 1024;
+export const databaseMaximumPayloadBytes = 16 * 1024 * 1024;
 export const databaseMaximumQueuedRequestBytes = 64 * 1024 * 1024;
 export const databaseMaximumPendingRequests = 1024;
 export const databaseMaximumInvocationTimeoutMilliseconds = 30_000;
 export const databaseMaximumAlarmRecoveryDelayMilliseconds = 24 * 60 * 60 * 1_000;
 export const databaseMaximumRequestStreamChunks = 65_536;
 export const defaultDatabaseMaxRequestBytes = 4 * 1024 * 1024;
+export const defaultDatabaseMaxContextBytes = 1 * 1024 * 1024;
 export const defaultDatabaseMaxResponseBytes = 4 * 1024 * 1024;
 export const defaultDatabaseMaxQueuedRequestBytes = 16 * 1024 * 1024;
 export const defaultDatabaseMaxPendingRequests = 64;
@@ -17,6 +18,7 @@ export const defaultDatabaseAlarmRecoveryDelayMilliseconds = 60_000;
 export const defaultDatabaseMaxRequestStreamChunks = 1_024;
 
 export type DatabaseRuntimeLimitEnvironment = {
+  DATABASE_MAX_CONTEXT_BYTES?: string | number | null;
   DATABASE_MAX_REQUEST_BYTES?: string | number | null;
   DATABASE_MAX_RESPONSE_BYTES?: string | number | null;
   DATABASE_MAX_QUEUED_REQUEST_BYTES?: string | number | null;
@@ -29,7 +31,7 @@ export class DatabasePayloadTooLargeError extends Error {
   readonly limit: number;
 
   constructor(limit: number) {
-    super(`DatabaseWire request exceeds ${limit} bytes`);
+    super(`Application payload exceeds ${limit} bytes`);
     this.name = "DatabasePayloadTooLargeError";
     this.limit = limit;
   }
@@ -52,17 +54,27 @@ export class DatabaseRuntimeLimitConfigurationError extends Error {
 export function databaseMaxRequestBytes(
   env: DatabaseRuntimeLimitEnvironment | null | undefined
 ): number {
-  return configuredFrameLimit(
+  return configuredPayloadLimit(
     env?.DATABASE_MAX_REQUEST_BYTES,
     "DATABASE_MAX_REQUEST_BYTES",
     defaultDatabaseMaxRequestBytes
   );
 }
 
+export function databaseMaxContextBytes(
+  env: DatabaseRuntimeLimitEnvironment | null | undefined
+): number {
+  return configuredPayloadLimit(
+    env?.DATABASE_MAX_CONTEXT_BYTES,
+    "DATABASE_MAX_CONTEXT_BYTES",
+    defaultDatabaseMaxContextBytes
+  );
+}
+
 export function databaseMaxResponseBytes(
   env: DatabaseRuntimeLimitEnvironment | null | undefined
 ): number {
-  return configuredFrameLimit(
+  return configuredPayloadLimit(
     env?.DATABASE_MAX_RESPONSE_BYTES,
     "DATABASE_MAX_RESPONSE_BYTES",
     defaultDatabaseMaxResponseBytes
@@ -135,7 +147,7 @@ export function rejectOversizedContentLength(
   return contentLength > limit ? payloadTooLargeResponse(limit) : null;
 }
 
-export async function readBoundedRequestBytes(
+export async function readBoundedPayloadBytes(
   request: Request,
   limit: number,
   maximumChunkCount: number = defaultDatabaseMaxRequestStreamChunks
@@ -168,11 +180,11 @@ export async function readBoundedRequestBytes(
         break;
       }
       if (!(value instanceof Uint8Array)) {
-        throw new TypeError("DatabaseWire request body chunk is not binary");
+        throw new TypeError("Application payload body chunk is not binary");
       }
       chunkCount += 1;
       if (chunkCount > validatedMaximumChunkCount) {
-        throw new DatabaseRequestStreamChunkLimitError(
+        throw new DatabasePayloadStreamChunkLimitError(
           validatedMaximumChunkCount
         );
       }
@@ -194,8 +206,8 @@ export async function readBoundedRequestBytes(
     return chunks[0]!;
   }
 
-  // DatabaseWire execution requires one contiguous frame. Non-contiguous
-  // stream chunks therefore need exactly one consolidation copy.
+  // The reactor ABI requires one contiguous buffer. Non-contiguous stream
+  // chunks therefore need exactly one consolidation copy.
   const bytes = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
@@ -206,7 +218,7 @@ export async function readBoundedRequestBytes(
 }
 
 export function payloadTooLargeResponse(limit: number): Response {
-  return new Response(`DatabaseWire request exceeds ${limit} bytes`, {
+  return new Response(`Application payload exceeds ${limit} bytes`, {
     status: 413,
   });
 }
@@ -215,16 +227,7 @@ export function invalidContentLengthResponse(): Response {
   return new Response("Invalid Content-Length", { status: 400 });
 }
 
-export function hasDatabaseWireContentType(request: Request): boolean {
-  const value = request.headers.get("content-type");
-  if (value === null) {
-    return false;
-  }
-  return value.split(";", 1)[0]?.trim().toLowerCase()
-    === "application/octet-stream";
-}
-
-function configuredFrameLimit(
+function configuredPayloadLimit(
   configured: string | number | null | undefined,
   field: string,
   defaultValue: number
@@ -233,7 +236,7 @@ function configuredFrameLimit(
     configured,
     field,
     defaultValue,
-    databaseWireMaximumFrameBytes
+    databaseMaximumPayloadBytes
   );
 }
 

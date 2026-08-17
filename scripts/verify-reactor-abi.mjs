@@ -8,11 +8,13 @@ if (artifactPath === undefined) {
 const requiredExports = new Map([
   ["memory", "memory"],
   ["_initialize", "function"],
+  ["database_abi_version", "function"],
   ["database_alloc", "function"],
   ["database_dealloc", "function"],
   ["database_start", "function"],
   ["database_invoke", "function"],
   ["database_alarm", "function"],
+  ["database_shutdown", "function"],
   ["database_executor_run", "function"],
   ["database_clock_resume", "function"],
 ]);
@@ -27,7 +29,6 @@ const requiredRuntimeImports = new Map([
   ["database_clock.cancel", "function"],
   ["database_clock.monotonic_nanoseconds", "function"],
   ["database_clock.wall_time_milliseconds", "function"],
-  ["database_random.random_u64", "function"],
 ]);
 const allowedImportModules = new Set([
   "storage_host",
@@ -35,7 +36,6 @@ const allowedImportModules = new Set([
   "database_executor",
   "database_alarm",
   "database_clock",
-  "database_random",
   "wasi_snapshot_preview1",
 ]);
 

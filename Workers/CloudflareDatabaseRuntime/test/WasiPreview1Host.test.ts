@@ -202,7 +202,7 @@ test("WasiPreview1Host rejects unsupported clocks and polling", () => {
   assert.equal(readUInt32(addressSpace, 48), 99);
 });
 
-test("WasiPreview1Host returns fault for invalid scalar output ranges", () => {
+test("WasiPreview1Host fills random bytes and rejects invalid output ranges", () => {
   const addressSpace = new WebAssembly.Memory({ initial: 1 });
   const runtimeServices = wasiServicesForTesting(addressSpace);
   const invalidPointer = addressSpace.buffer.byteLength - 2;
@@ -234,6 +234,19 @@ test("WasiPreview1Host returns fault for invalid scalar output ranges", () => {
     runtimeServices,
     "random_get"
   );
+  const randomDestination = 64;
+  const randomByteCount = 32;
+
+  assert.equal(
+    randomGet(randomDestination, randomByteCount),
+    wasiErrno.success
+  );
+  const randomBytes = new Uint8Array(
+    addressSpace.buffer,
+    randomDestination,
+    randomByteCount
+  );
+  assert.ok(randomBytes.some((byte) => byte !== 0));
 
   assert.equal(argsSizesGet(invalidPointer, 32), wasiErrno.fault);
   assert.equal(environSizesGet(32, invalidPointer), wasiErrno.fault);

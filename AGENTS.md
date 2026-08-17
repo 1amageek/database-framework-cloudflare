@@ -2,15 +2,18 @@
 
 ## Responsibility
 
-- This package hosts one application-specific full database-framework runtime as a persistent WASI reactor inside a Database Durable Object.
-- TypeScript owns Durable Object lifecycle, FIFO admission, typed RPC byte transfer, completion correlation, limits, and the synchronous storage host ABI.
-- Swift composes `DatabaseServerRuntime` with database-framework execution.
-  Server frame/operation/job semantics belong to `database-server`; database,
-  query, graph, transaction, index, and migration semantics belong to
-  database-framework. TypeScript must not duplicate either layer.
-- This package depends on `DatabaseServerRuntime` only. It must not link
-  `DatabaseServerHost`, Hummingbird, native TLS, credential files, signals, or
-  process lifecycle.
+- This package hosts one application-specific database-framework runtime as a
+  persistent WASI reactor inside a Database Durable Object.
+- TypeScript owns Durable Object lifecycle, FIFO admission, opaque RPC byte
+  transfer, completion correlation, limits, and the synchronous storage host
+  ABI.
+- Swift opens `DBContainer` with the application-selected framework features
+  and delegates opaque context and request bytes to an application-owned
+  session. It does not interpret DatabaseWire, authentication principals,
+  remote operations, persistent server jobs, or server administration.
+- This package depends on `database-framework` and `storage-kit`. It must not
+  depend on any `database-server` product or link Hummingbird, native TLS,
+  credential files, signals, or process lifecycle.
 
 ## Naming
 
@@ -29,7 +32,8 @@
 - Validate request, response, host frame, key, value, aggregate mutation, memory, startup, and execution limits before use.
 - Borrow WebAssembly memory only synchronously. Copy once into the final owner whenever data must outlive that borrow; never retain an escaped pointer.
 - Every accepted call must resolve or reject exactly once with a typed error. Do not return stale or synthetic success.
-- The private reactor boundary is ABI v2. Authorization and DatabaseWire remain separate owned frames.
+- The private reactor boundary is ABI v3. Application context and request are
+  separate opaque owned buffers.
 
 ## Verification
 
@@ -37,11 +41,15 @@
   toolchain through `build-for-testing` and `test-without-building`. Inject the
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
   `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. The standard graph requires
-  exactly 34 passed tests. An isolated `MultipleBases` graph uses
-  `DATABASE_CLOUDFLARE_EXPECTED_TEST_COUNT=36` and requires exactly 36 passed
-  tests. Both runs require zero failures, skips, expected failures, or runtime
-  warnings. Never reuse DerivedData across the two trait graphs.
-- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 122
+  exactly 18 passed tests. An isolated `MultipleBases` graph is selected with
+  `DATABASE_CLOUDFLARE_TEST_TRAITS=MultipleBases` and requires exactly 20 passed
+  tests. `DATABASE_CLOUDFLARE_TEST_TRAITS=AllRuntimeFeatures` requires exactly
+  21 passed tests, including the three VectorIndexes capability-admission
+  contracts. The harness derives the expected count from the selected traits
+  unless it is explicitly overridden. Every run requires zero failures, skips,
+  expected failures, or runtime warnings. Never reuse DerivedData across trait
+  graphs.
+- Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 120
   passed TypeScript tests with zero failures, cancellations, skips, or todos.
 - Run `scripts/verify-runtime-feasibility.sh` with the fixed
   `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. The gate

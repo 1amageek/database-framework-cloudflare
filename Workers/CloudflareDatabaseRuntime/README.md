@@ -1,175 +1,118 @@
 # Cloudflare Database Runtime
 
-This package runs an application-specific full `database-framework` runtime
-inside a Durable Object. The Durable Object owns the runtime connection and
-StorageKit SQLite adapter. TypeScript supplies platform services and bounded
-byte transfer; database semantics remain in Swift.
+TypeScript host adapter for an application-specific `database-framework`
+reactor running inside a Cloudflare Durable Object.
 
 ```mermaid
 flowchart LR
-  Worker["Application Worker"] --> RPC["Durable Object RPC"]
-  RPC --> DO["CloudflareDatabaseDurableObject"]
-  DO --> Queue["DatabaseRuntimeEntryQueue"]
+  Worker["Application Worker"] -->|"opaque bytes"| DO["CloudflareDatabaseDurableObject"]
+  DO --> Queue["FIFO admission"]
   Queue --> Connection["DatabaseRuntimeConnection"]
-  Connection --> Runtime["Application database runtime"]
-  Runtime --> Storage["storage_host.dispatch / receive / discard"]
+  Connection --> Reactor["Application Swift reactor"]
+  Reactor --> Storage["StorageKit host ABI"]
   Storage --> SQLite["Durable Object SQLite"]
 ```
 
-The application selects the Durable Object name and supplies the compiled
-`DatabaseRuntimeProgram`. Public HTTP endpoints and credential authentication
-belong to the application Worker. After authentication it passes the unchanged
-DatabaseWire payload and a separate `DatabaseAuthenticatedPrincipal` to the
-Durable Object; raw credentials are never forwarded to Swift.
+The application Worker owns HTTP routing, authentication, application context
+encoding, request and response codecs, and Durable Object identity selection.
+This package does not interpret DatabaseWire or authentication principals and
+does not depend on `database-server`.
 
-## Responsibilities
+## APIs
 
 | API | Responsibility |
 |---|---|
-| `CloudflareDatabaseDurableObject` | SQLite migration, runtime initialization, FIFO admission, RPC invocation, and alarm entry |
-| `DatabaseAuthenticatedPrincipal` | Bounded canonical identity, role, and claim frame for an already authenticated caller |
-| `DatabaseRuntimeConnection` | Runtime lifecycle, semantic endpoint validation, completion delivery, and terminal failure handling |
-| `DatabaseRuntimePayloadOwnership` | Payload ownership transitions, cumulative payload limits, and address-space limits |
-| `DatabaseTaskScheduler` | Immediate and delayed runtime task scheduling |
+| `CloudflareDatabaseDurableObject` | SQLite migration, persistent reactor creation, FIFO admission, RPC invocation, and alarm entry |
+| `DatabaseRuntimeConnection` | ABI v3 validation, runtime lifecycle, payload transfer, completion delivery, timeouts, and terminal failure handling |
+| `DatabaseRuntimeEntryQueue` | Bounded FIFO ownership of context and request payloads |
+| `DatabaseRuntimePayloadOwnership` | Runtime allocation ownership and cumulative byte/address-space limits |
+| `DatabaseTaskScheduler` | Immediate and delayed Swift task scheduling |
 | `DatabaseClockService` | Cancellable monotonic waits and exactly-once resume |
 | `DurableObjectDatabaseAlarmScheduler` | Durable alarm persistence |
-| `WasiPreview1Host` | The selected WASI Preview 1 service adapter |
+| `WasiPreview1Host` | WASI Preview 1 host services selected by this runtime |
 
-Persistent job wake-ups use Durable Object alarms. Swift requests an absolute
-timestamp through `database_alarm.schedule`; the platform service validates
-and persists it with `setAlarm`. The Durable Object `alarm()` method enters the
-same FIFO queue as DatabaseWire invocations. Before entering Swift, the host
-persists a safety wake. A successful delivery replaces that wake with the
-earliest timestamp requested during the delivery, or deletes it when no work
-remains. A failed delivery preserves the safety wake and rethrows so platform
-retry and application-level recovery remain independent.
+Application code calls:
 
-Suspending Swift tasks use `database_clock.schedule` and
-`database_clock.cancel`. One `AbortController` is owned per wait, Cloudflare's
-monotonic scheduler performs the wait, and `database_clock_resume` resumes only
-the currently registered wait.
+```ts
+const responseBytes = await database.invoke(requestBytes, contextBytes);
+```
+
+Both arguments are application-defined `Uint8Array` values. The adapter checks
+their independent limits and forwards them without decoding.
+
+## ABI v3
+
+The runtime must export `database_abi_version` returning `3` before any other
+operation is accepted. Invocation uses two independently owned payloads:
+
+```text
+database_invoke(
+  callID,
+  contextAddress,
+  contextByteCount,
+  requestAddress,
+  requestByteCount
+)
+```
+
+No v2 compatibility decoder is retained.
 
 ## Limits
 
 | Environment value | Default | Responsibility |
 |---|---:|---|
-| `DATABASE_MAX_REQUEST_BYTES` | `4194304` | Maximum DatabaseWire request |
-| `DATABASE_MAX_RESPONSE_BYTES` | `4194304` | Maximum DatabaseWire response |
-| `DATABASE_MAX_PENDING_REQUESTS` | `64` | Maximum admitted requests, including the active request |
-| `DATABASE_MAX_QUEUED_REQUEST_BYTES` | `16777216` | Maximum aggregate retained request backing bytes |
-| `DATABASE_INVOCATION_TIMEOUT_MILLISECONDS` | `30000` | Terminal deadline for startup, invocation, or alarm completion |
-| `DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS` | `60000` | Safety wake retained after a failed alarm delivery; must exceed the invocation deadline |
+| `DATABASE_MAX_CONTEXT_BYTES` | `1048576` | Maximum opaque application context |
+| `DATABASE_MAX_REQUEST_BYTES` | `4194304` | Maximum opaque application request |
+| `DATABASE_MAX_RESPONSE_BYTES` | `4194304` | Maximum opaque application response |
+| `DATABASE_MAX_PENDING_REQUESTS` | `64` | Active plus queued invocations |
+| `DATABASE_MAX_QUEUED_REQUEST_BYTES` | `16777216` | Aggregate retained context and request backing bytes |
+| `DATABASE_INVOCATION_TIMEOUT_MILLISECONDS` | `30000` | Startup, invocation, alarm, and shutdown deadline |
+| `DATABASE_ALARM_RECOVERY_DELAY_MILLISECONDS` | `60000` | Safety wake after failed alarm delivery |
 
-`DatabaseRuntimeConnectionLimits` applies additional independent bounds:
-
-| Runtime limit | Default | Responsibility |
-|---|---:|---|
-| Request stream chunks | `1024` | Bounds stream metadata before the one required consolidation copy |
-| Payloads per active invocation set | `4096` | Bounds connection-owned invocation payload reservations |
-| Payload bytes per active invocation set | `33554432` | Bounds cumulative payload transfer work |
-| Runtime address space | `67108864` | Rejects runtime instances whose address space exceeds the budget |
-| Scheduled tasks | `4096` | Bounds retained immediate tasks and timers |
-| Scheduled clock waits | `4096` | Bounds cancellable monotonic waits |
-| WASI iovecs | `1024` | Bounds descriptor traversal |
-| WASI iovec bytes | `1048576` | Bounds bytes acknowledged by one vector operation |
-
-Applications may tighten these values but cannot raise them above compiled
-protocol caps.
+Compiled hard caps also bound payload ownership count and bytes, runtime address
+space, scheduled tasks, clock waits, WASI iovecs, and failure payloads.
 
 ## Failure semantics
 
-Requests enter an explicit FIFO queue. Capacity failures are typed. A timeout,
-invalid completion, scheduler failure, clock failure, or ownership violation
-terminally poisons the connection and aborts the Durable Object generation.
-The same runtime instance is never entered again.
+Application invocation and alarm failures are non-terminal typed completions.
+An unclassified application exception is exposed as
+`database.execution.runtime_failure`, while cancellation is exposed as
+`database.execution.cancelled`; the host does not reinterpret either as an
+application request-decoding result.
+Malformed ABI completion, payload ownership violation, timeout, scheduler
+failure, clock failure, or address-space violation terminally poisons the
+runtime generation. The same reactor instance is not entered again after a
+terminal failure.
 
-A scheduled-work operation that completes with `scheduledWorkFailed` does not
-poison the connection. The Durable Object retains its safety wake and rethrows
-the failure so the same persisted job can be attempted again. Invocation
-timeouts remain terminal for the current runtime generation, while the safety
-wake survives that generation.
-
-Failure payloads use strict UTF-8. Malformed or scalar-truncated text is a
-terminal protocol failure rather than a replacement-character fallback.
-
-Alarm entry and completion wait for Durable Object alarm persistence.
-Persistence failures remain visible to Cloudflare's alarm retry behavior.
-
-## Zero-copy contract
-
-| Boundary | Ownership |
-|---|---|
-| Durable Object RPC input | The request queue retains the incoming backing store and accounts for its full retained size |
-| Authenticated principal | The queue owns and accounts for a separate canonical authorization frame |
-| Runtime invocation input | Two runtime allocations receive authorization and request bytes and transfer together to runtime ownership |
-| Runtime completion | The connection borrows the payload during completion delivery and creates one JavaScript-owned result |
-| Storage request | The SQLite adapter borrows the runtime range for the synchronous dispatch only |
-| Storage response | Dispatch retains an independent host response; after dispatch returns, Swift allocates final storage and receive performs one cross-heap copy |
+Failure payloads use strict UTF-8. Storage and completion borrowing never lets
+a pointer escape its synchronous borrow.
 
 ## Validation
 
 ```bash
-npm install
+npm ci
 npm run typecheck
 npm test
 cd ../..
 sh scripts/verify-runtime-feasibility.sh
 ```
 
-The gate uses `AllRuntimeFeatures` by default. An application-specific
-verification selects its compile-time runtime traits explicitly:
+The full gate verifies ABI v3, a real application-protocol write/read through
+`DBContainer` and Durable Object SQLite, workerd RPC, persisted state after a
+workerd restart, selected framework products, size, address-space, startup,
+and teardown behavior. `npm test` must report exactly 120 passed tests with no
+failures, cancellations, skips, or todos.
+
+## Distribution
+
+The package version uses npm-compatible numeric SemVer. Git release
+`26.0817.0` therefore contains package version `26.817.0`. Consumers install
+the immutable archive attached to that GitHub release:
 
 ```bash
-DATABASE_RUNTIME_TRAITS=GraphIndexes \
-  sh scripts/verify-runtime-feasibility.sh
+npm install --save-exact https://github.com/1amageek/database-framework-cloudflare/releases/download/26.0817.0/database-framework-cloudflare-cloudflare-database-runtime-26.817.0.tgz
 ```
 
-The feasibility gate builds the selected app-specific verification reactor
-with Swift 6.4, applies `wasm-opt -Oz`, validates the fixed import/export ABI,
-executes typed schema, mutation, and query requests first against the Node
-reference host and then through an actual workerd Worker, Durable Object RPC,
-and Durable Object SQLite. With `MultipleBases`, it first provisions the Base
-through its persistent lifecycle job; the standard fixture uses the database
-data root. When `GraphIndexes` is selected, the mutation creates an OWL-class
-entity and a SPARQL ASK request must observe its generated RDF projection. The
-workerd process is restarted against the same persisted state and must still
-return the inserted entity and every selected graph result. Each process stop
-must complete and make the endpoint unreachable before the next generation is
-started. The gate also enforces
-Worker size, isolate address-space, startup limits, required selected feature
-products, exclusion of unselected feature products, and exclusion of host-only
-adapters. A `VectorIndexes` composition additionally runs startup
-write/index/query/delete checks for Flat, IVF, and PQ. A separate negative
-fixture must reject HNSW before container opening. The gate still requires the
-actual `VectorIndex` and `SwiftHNSW` products because the framework feature is
-cohesive, while supported execution is determined by the Cloudflare capability
-validator rather than link presence.
-
-The 2026-08-12 gate produced a 9,292,168-byte optimized
-`AllRuntimeFeatures` reactor (3,249,509 bytes gzip) and a 10,183,059-byte
-`AllRuntimeFeatures,MultipleBases` reactor (3,566,916 bytes gzip). Both used a
-67,108,864-byte address space. Their startup measurements were 64.470 ms and
-36.843 ms, respectively. Durable Object RPC, SQLite persistence after a
-workerd restart, and negative readiness after every process stop passed for
-both compositions. A `GraphIndexes`-only reactor was 7,854,796 bytes
-(2,766,727 bytes gzip), started in 26.209 ms, executed its Graph and RDF path,
-and proved that every unselected index product was absent from the link inputs.
-
-`SWIFT_EXECUTABLE`, `SWIFT_EMBEDDED_WASM_SDK`, and
-`DATABASE_RUNTIME_BUILD_PATH` select reproducible toolchain and artifact
-locations. `DATABASE_RUNTIME_TRAITS` is a comma-separated list of public
-runtime feature traits. Relative build paths are resolved from the repository
-root. The release gate disables index-store generation and uses one build job
-so the fixed `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a` Embedded WASI
-toolchain produces the same reactor without concurrent compiler resource
-failures. Reactor debug metadata is also disabled because it is not shipped and
-the pinned cross-toolchain cannot validate host-built dependency DWARF;
-compiler diagnostics and all runtime checks remain enabled.
-
-The application repository owns its concrete runtime application, production
-Durable Object subclass, Wrangler configuration, routing, and authentication
-policy. It runs the same workerd-backed gate for its app-specific reactor
-before deployment.
-
-The normative fixed boundary is documented in
-[`Docs/ADR-0001-full-runtime-reactor-abi.md`](../../Docs/ADR-0001-full-runtime-reactor-abi.md).
+Its StorageKit host dependency is locked to the matching immutable
+`storage-kit` GitHub release archive. A sibling repository checkout is not
+part of the runtime installation contract.

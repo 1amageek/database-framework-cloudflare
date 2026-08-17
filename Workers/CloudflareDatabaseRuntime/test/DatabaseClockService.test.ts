@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { databaseRuntimeABIVersion } from "../src/DatabaseRuntimeABIVersion";
 import type { DatabaseRuntimeEndpoints } from "../src/DatabaseRuntimeTypes";
 import {
   databaseClockServiceErrorReason,
@@ -347,6 +348,7 @@ function runtimeEndpoints(
   resumeScheduledWait: (waitID: number) => void
 ): DatabaseRuntimeEndpoints {
   return {
+    abiVersion: () => databaseRuntimeABIVersion,
     reservePayload: () => 0,
     releasePayload: () => undefined,
     start: () => undefined,

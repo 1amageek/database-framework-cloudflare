@@ -1,8 +1,6 @@
-import DatabaseServerRuntime
-
-extension DatabaseContainerDefinition {
+extension CloudflareDatabaseDefinition {
     /// Validates platform restrictions before Cloudflare storage opens.
-    public func validateCloudflareHostingCapabilities()
+    public func validateHostingCapabilities()
         throws(CloudflareDatabaseConfigurationError) {
         try CloudflareDatabaseHostingCapabilityValidator.validate(self)
     }

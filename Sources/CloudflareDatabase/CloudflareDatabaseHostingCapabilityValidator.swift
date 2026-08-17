@@ -1,11 +1,10 @@
 #if CLOUDFLARE_DATABASE_VECTOR_INDEXES
 import VectorIndex
 #endif
-import DatabaseServerRuntime
 
 enum CloudflareDatabaseHostingCapabilityValidator {
     static func validate(
-        _ definition: DatabaseContainerDefinition
+        _ definition: CloudflareDatabaseDefinition
     ) throws(CloudflareDatabaseConfigurationError) {
         #if CLOUDFLARE_DATABASE_VECTOR_INDEXES
         let policies: [String: VectorRuntimePolicy]
@@ -21,9 +20,7 @@ enum CloudflareDatabaseHostingCapabilityValidator {
                 continue
             }
             if case .hnsw = policy.algorithm {
-                throw CloudflareDatabaseConfigurationError.unsupportedHNSW(
-                    indexName: indexName
-                )
+                throw .unsupportedHNSW(indexName: indexName)
             }
         }
         #else

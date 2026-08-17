@@ -1,4 +1,9 @@
 enum RuntimeVerificationError: Error {
-    case unexpectedServiceOperation
+    case documentNotFound
+    case invalidApplicationRequest
     case simulatedReadinessFailure
+    case simulatedSessionCreationFailure
+    case simulatedStorageInitializationFailure
+    case unauthorizedContext
+    case unexpectedStorageAccess
 }

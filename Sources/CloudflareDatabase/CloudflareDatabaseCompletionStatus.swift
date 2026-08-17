@@ -1,4 +1,4 @@
-/// Fixed v1 statuses for the runtime completion contract.
+/// Fixed statuses for private reactor ABI v3.
 public enum CloudflareDatabaseCompletionStatus: UInt32, Sendable, Hashable {
     case success = 0
     case invalidCallID = 1
@@ -12,6 +12,7 @@ public enum CloudflareDatabaseCompletionStatus: UInt32, Sendable, Hashable {
     case startupFailed = 9
     case cancelled = 10
     case runtimeFailed = 11
-    case invalidRequestFrame = 12
-    case scheduledWorkFailed = 13
+    case contextTooLarge = 12
+    case alarmFailed = 13
+    case applicationFailed = 14
 }

@@ -29,13 +29,13 @@ import { controllableDatabaseRuntimeInstantiator } from "./ControllableDatabaseR
 const emptyRuntimeProgram = new WebAssembly.Module(
   new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
 );
-const testAuthorizationBytes = new Uint8Array([1]);
+const testContextBytes = new Uint8Array([1]);
 
 function executeDatabaseRequest(
   connection: DatabaseRuntimeConnection,
   requestBytes: Uint8Array
 ): Promise<Uint8Array> {
-  return connection.execute(requestBytes, testAuthorizationBytes);
+  return connection.invoke(requestBytes, testContextBytes);
 }
 
 test("runtime connection shutdown rejects subsequent calls without a fatal reset", async () => {
@@ -76,6 +76,71 @@ test("concurrent shutdown calls share one runtime shutdown", async () => {
   await Promise.all([connection.shutdown(), connection.shutdown()]);
 
   assert.equal(shutdownCount, 1);
+});
+
+test("shutdown reserves admission when the call registry is full", async () => {
+  const connection = await DatabaseRuntimeConnection.instantiate(
+    emptyRuntimeProgram,
+    { dispatchBytes: (bytes) => bytes },
+    resolvingAlarmScheduler(),
+    controllableDatabaseRuntimeInstantiator({ kind: "hangOnceThenEcho" }),
+    new DatabaseRuntimeConnectionLimits({
+      maximumRequestBytes: 1024,
+      maximumResponseBytes: 1024,
+      maximumPendingInvocations: 1,
+    }),
+    () => {}
+  );
+
+  const acceptedRequest = executeDatabaseRequest(
+    connection,
+    new Uint8Array([1])
+  );
+  const acceptedRequestFailure = assert.rejects(
+    acceptedRequest,
+    DatabaseRuntimeConnectionShutdownError
+  );
+  const shutdown = connection.shutdown();
+
+  await assert.rejects(
+    executeDatabaseRequest(connection, new Uint8Array([2])),
+    DatabaseRuntimeConnectionShutdownError
+  );
+  await shutdown;
+  await acceptedRequestFailure;
+});
+
+test("application failure and cancellation remain non-terminal", async () => {
+  for (const status of [
+    databaseCompletionStatus.applicationFailed,
+    databaseCompletionStatus.cancelled,
+  ]) {
+    const runtimeFailureReasons: string[] = [];
+    const connection = await DatabaseRuntimeConnection.instantiate(
+      emptyRuntimeProgram,
+      { dispatchBytes: (bytes) => bytes },
+      resolvingAlarmScheduler(),
+      controllableDatabaseRuntimeInstantiator({
+        kind: "failureOnceThenEcho",
+        status,
+        message: "application outcome",
+      }),
+      limits(),
+      (reason) => runtimeFailureReasons.push(reason)
+    );
+
+    await assert.rejects(
+      executeDatabaseRequest(connection, new Uint8Array([1])),
+      (error: unknown) => error instanceof DatabaseRuntimeInvocationError
+        && error.status === status
+    );
+    assert.deepEqual(
+      await executeDatabaseRequest(connection, new Uint8Array([2])),
+      new Uint8Array([2])
+    );
+    assert.deepEqual(runtimeFailureReasons, []);
+    await connection.shutdown();
+  }
 });
 
 test("runtime connection owns request bytes across asynchronous runtime execution", async () => {
@@ -391,7 +456,7 @@ test("oversized failure payloads terminate before UTF-8 decoding", async () => {
     resolvingAlarmScheduler(),
     controllableDatabaseRuntimeInstantiator({
       kind: "failureBytes",
-      status: databaseCompletionStatus.invalidRequestFrame,
+      status: databaseCompletionStatus.applicationFailed,
       bytes: new Array(9).fill(0x41),
     }),
     new DatabaseRuntimeConnectionLimits({
@@ -498,6 +563,7 @@ test("storage responses do not consume connection-owned payload count", async ()
       dispatchCount: 2,
     }),
     new DatabaseRuntimeConnectionLimits({
+      maximumContextBytes: 1,
       maximumRequestBytes: 1,
       maximumResponseBytes: 1,
       maximumStorageRequestBytes: 1,
@@ -525,6 +591,7 @@ test("storage responses do not consume connection-owned payload bytes", async ()
       dispatchCount: 2,
     }),
     new DatabaseRuntimeConnectionLimits({
+      maximumContextBytes: 1,
       maximumRequestBytes: 1,
       maximumResponseBytes: 1,
       maximumStorageRequestBytes: 1,
@@ -548,6 +615,7 @@ test("runtime connection resets payload budgets after each call", async () => {
     resolvingAlarmScheduler(),
     controllableDatabaseRuntimeInstantiator(),
     new DatabaseRuntimeConnectionLimits({
+      maximumContextBytes: 1,
       maximumRequestBytes: 1,
       maximumResponseBytes: 1,
       maximumStorageRequestBytes: 1,
@@ -908,7 +976,7 @@ test("runtime connection installs cancellable clock services and routes resume",
   await connection.shutdown();
 });
 
-test("runtime connection supplies monotonic wall-clock and unsigned random values", async () => {
+test("runtime connection supplies monotonic and wall-clock values", async () => {
   let registeredRuntimeServices: WebAssembly.Imports | null = null;
   const connection = await DatabaseRuntimeConnection.instantiate(
     emptyRuntimeProgram,
@@ -933,22 +1001,14 @@ test("runtime connection supplies monotonic wall-clock and unsigned random value
     ?.monotonic_nanoseconds;
   const wallTimeMilliseconds = runtimeServices?.database_clock
     ?.wall_time_milliseconds;
-  const randomUInt64 = runtimeServices?.database_random?.random_u64;
   assert.equal(typeof monotonicNanoseconds, "function");
   assert.equal(typeof wallTimeMilliseconds, "function");
-  assert.equal(typeof randomUInt64, "function");
 
   const monotonic = (monotonicNanoseconds as () => bigint)();
   const wallTime = (wallTimeMilliseconds as () => bigint)();
   assert.ok(monotonic >= 0n);
   assert.ok(wallTime >= BigInt(Date.now() - 1_000));
   assert.ok(wallTime <= BigInt(Date.now() + 1_000));
-
-  for (let index = 0; index < 128; index += 1) {
-    const value = (randomUInt64 as () => bigint)();
-    assert.ok(value >= 0n);
-    assert.ok(value <= 0xffff_ffff_ffff_ffffn);
-  }
 
   await connection.shutdown();
 });
@@ -1125,8 +1185,8 @@ test("runtime connection preserves runtime alarm failures for platform retry", a
     resolvingAlarmScheduler(),
     controllableDatabaseRuntimeInstantiator({
       kind: "alarmFailureOnce",
-      status: databaseCompletionStatus.scheduledWorkFailed,
-      message: "scheduled work failed",
+      status: databaseCompletionStatus.alarmFailed,
+      message: "alarm failed",
     }),
     limits(),
     (reason) => runtimeFailureReasons.push(reason)
@@ -1135,8 +1195,8 @@ test("runtime connection preserves runtime alarm failures for platform retry", a
   await assert.rejects(
     connection.alarm(),
     (error: unknown) => error instanceof DatabaseRuntimeInvocationError
-      && error.status === databaseCompletionStatus.scheduledWorkFailed
-      && error.message === "scheduled work failed"
+      && error.status === databaseCompletionStatus.alarmFailed
+      && error.message === "alarm failed"
   );
   await connection.alarm();
   assert.deepEqual(
@@ -1146,7 +1206,7 @@ test("runtime connection preserves runtime alarm failures for platform retry", a
   assert.deepEqual(runtimeFailureReasons, []);
 });
 
-test("scheduled-work failure status from a request poisons the runtime", async () => {
+test("alarm failure status from a request poisons the runtime", async () => {
   const runtimeFailureReasons: string[] = [];
   const connection = await DatabaseRuntimeConnection.instantiate(
     emptyRuntimeProgram,
@@ -1154,14 +1214,14 @@ test("scheduled-work failure status from a request poisons the runtime", async (
     resolvingAlarmScheduler(),
     controllableDatabaseRuntimeInstantiator({
       kind: "failure",
-      status: databaseCompletionStatus.scheduledWorkFailed,
+      status: databaseCompletionStatus.alarmFailed,
       message: "invalid request completion",
     }),
     limits(),
     (reason) => runtimeFailureReasons.push(reason)
   );
   const expectedMessage =
-    "Database runtime returned a scheduled-work failure for a request call";
+    "Database runtime returned an alarm failure for a request call";
 
   await assert.rejects(
     executeDatabaseRequest(connection, new Uint8Array([1])),
@@ -1176,10 +1236,10 @@ test("scheduled-work failure status from a request poisons the runtime", async (
   assert.deepEqual(runtimeFailureReasons, [expectedMessage]);
 });
 
-test("scheduled-work failure status cannot complete runtime startup", async () => {
+test("alarm failure status cannot complete runtime startup", async () => {
   const runtimeFailureReasons: string[] = [];
   const expectedMessage =
-    "Database runtime returned a scheduled-work failure for a startup call";
+    "Database runtime returned an alarm failure for a startup call";
 
   await assert.rejects(
     DatabaseRuntimeConnection.instantiate(
@@ -1188,7 +1248,7 @@ test("scheduled-work failure status cannot complete runtime startup", async () =
       resolvingAlarmScheduler(),
       controllableDatabaseRuntimeInstantiator({
         kind: "startupFailure",
-        status: databaseCompletionStatus.scheduledWorkFailed,
+        status: databaseCompletionStatus.alarmFailed,
         message: "invalid startup completion",
       }),
       limits(),
@@ -1284,13 +1344,14 @@ function limits(): DatabaseRuntimeConnectionLimits {
 test("runtime connection resource limits reject inconsistent configurations", () => {
   assert.throws(
     () => new DatabaseRuntimeConnectionLimits({
+      maximumContextBytes: 4,
       maximumRequestBytes: 8,
       maximumResponseBytes: 8,
       maximumStorageResponseBytes: 8,
-      maximumPayloadBytesPerInvocationSet: 7,
+      maximumPayloadBytesPerInvocationSet: 11,
     }),
     (error: unknown) => error instanceof RangeError
-      && error.message === "maximumPayloadBytesPerInvocationSet must be at least 8"
+      && error.message === "maximumPayloadBytesPerInvocationSet must be at least 12"
   );
   assert.throws(
     () => new DatabaseRuntimeConnectionLimits({

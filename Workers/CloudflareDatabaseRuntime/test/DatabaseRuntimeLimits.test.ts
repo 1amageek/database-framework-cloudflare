@@ -9,13 +9,13 @@ import {
   DatabaseRuntimeLimitConfigurationError,
   DatabaseInvalidContentLengthError,
   DatabasePayloadTooLargeError,
-  readBoundedRequestBytes,
+  readBoundedPayloadBytes,
   rejectOversizedContentLength,
 } from "../src/DatabaseRuntimeLimits";
-import { DatabaseRequestStreamChunkLimitError } from "../src/DatabaseRequestStreamChunkLimitError";
+import { DatabasePayloadStreamChunkLimitError } from "../src/DatabasePayloadStreamChunkLimitError";
 
 test("bounded request reader accepts payloads within the configured limit", async () => {
-  const bytes = await readBoundedRequestBytes(new Request("https://database.local", {
+  const bytes = await readBoundedPayloadBytes(new Request("https://database.local", {
     method: "POST",
     body: new Uint8Array([0x01, 0x02, 0x03]),
   }), 3);
@@ -37,7 +37,7 @@ test("bounded request reader returns a sole stream chunk without copying", async
     headers: new Headers(),
   } as Request;
 
-  const bytes = await readBoundedRequestBytes(request, 3);
+  const bytes = await readBoundedPayloadBytes(request, 3);
 
   assert.equal(bytes, chunk);
   assert.equal(bytes.byteOffset, 2);
@@ -46,7 +46,7 @@ test("bounded request reader returns a sole stream chunk without copying", async
 
 test("bounded request reader rejects oversized payloads while streaming", async () => {
   await assert.rejects(
-    readBoundedRequestBytes(new Request("https://database.local", {
+    readBoundedPayloadBytes(new Request("https://database.local", {
       method: "POST",
       body: new Uint8Array([0x01, 0x02, 0x03, 0x04]),
     }), 3),
@@ -67,7 +67,7 @@ test("bounded request reader cancels the stream after exceeding the limit", asyn
   });
 
   await assert.rejects(
-    readBoundedRequestBytes(new Request("https://database.local", {
+    readBoundedPayloadBytes(new Request("https://database.local", {
       method: "POST",
       body: stream,
       duplex: "half",
@@ -95,8 +95,8 @@ test("bounded request reader limits zero-length stream chunk fan-out", async () 
   } as Request;
 
   await assert.rejects(
-    readBoundedRequestBytes(request, 1, 2),
-    (error: unknown) => error instanceof DatabaseRequestStreamChunkLimitError
+    readBoundedPayloadBytes(request, 1, 2),
+    (error: unknown) => error instanceof DatabasePayloadStreamChunkLimitError
       && error.limit === 2
   );
   assert.equal(canceled, true);
@@ -125,7 +125,7 @@ test("bounded request reader cancels a stream after its reader fails", async () 
   } as unknown as Request;
 
   await assert.rejects(
-    readBoundedRequestBytes(request, 1),
+    readBoundedPayloadBytes(request, 1),
     /reader failed/
   );
   assert.equal(canceled, true);
@@ -154,7 +154,7 @@ test("bounded request reader preserves cancellation failures as secondary", asyn
   } as unknown as Request;
 
   await assert.rejects(
-    readBoundedRequestBytes(request, 1),
+    readBoundedPayloadBytes(request, 1),
     /reader failed/
   );
   assert.equal(released, true);
@@ -181,7 +181,7 @@ test("content length guard rejects invalid and oversized lengths", () => {
 test("bounded request reader rejects invalid content length", async () => {
   for (const contentLength of ["invalid", "1e3", "+1", "9007199254740992"]) {
     await assert.rejects(
-      readBoundedRequestBytes(new Request("https://database.local", {
+      readBoundedPayloadBytes(new Request("https://database.local", {
         method: "POST",
         headers: { "content-length": contentLength },
       }), 3),

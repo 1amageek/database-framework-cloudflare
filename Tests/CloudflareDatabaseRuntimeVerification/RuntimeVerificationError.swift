@@ -1,7 +1,6 @@
-#if CLOUDFLARE_RUNTIME_VECTOR_INDEXES
 enum RuntimeVerificationError: Error {
-    case vectorExecutionMismatch
-    case hnswCapabilityWasAccepted
-    case hnswCapabilityErrorMismatch
+    case documentNotFound
+    case invalidApplicationRequest
+    case unauthorizedContext
+    case unexpectedVectorResult
 }
-#endif

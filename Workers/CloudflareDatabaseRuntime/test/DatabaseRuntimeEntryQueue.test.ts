@@ -98,7 +98,7 @@ test("runtime entry queue continues in FIFO order after failure", async () => {
   assert.equal(queue.pendingInvocationByteCount, 0);
 });
 
-test("scheduled work has reserved FIFO admission when invocations are full", async () => {
+test("alarm work has reserved FIFO admission when invocations are full", async () => {
   const queue = runtimeEntryQueue(1, 1024);
   const invocation = deferred<void>();
   const executionOrder: string[] = [];
@@ -109,24 +109,24 @@ test("scheduled work has reserved FIFO admission when invocations are full", asy
       await invocation.promise;
     }
   );
-  const scheduledWorkResult = queue.enqueueScheduledWork(() => {
-    executionOrder.push("scheduled-work");
+  const alarmResult = queue.enqueueAlarm(() => {
+    executionOrder.push("alarm");
   });
 
   await assert.rejects(
     enqueueInvocation(queue, new Uint8Array([2]), () => undefined),
     DatabaseInvocationCapacityError
   );
-  assert.equal(queue.pendingScheduledWorkCount, 1);
+  assert.equal(queue.pendingAlarmCount, 1);
 
   invocation.resolve();
   await invocationResult;
-  await scheduledWorkResult;
-  assert.deepEqual(executionOrder, ["invocation", "scheduled-work"]);
-  assert.equal(queue.pendingScheduledWorkCount, 0);
+  await alarmResult;
+  assert.deepEqual(executionOrder, ["invocation", "alarm"]);
+  assert.equal(queue.pendingAlarmCount, 0);
 });
 
-test("runtime entry queue continues after scheduled work fails", async () => {
+test("runtime entry queue continues after alarm work fails", async () => {
   const queue = runtimeEntryQueue(2, 1024);
   const firstInvocation = deferred<void>();
   const executionOrder: string[] = [];
@@ -137,9 +137,9 @@ test("runtime entry queue continues after scheduled work fails", async () => {
       await firstInvocation.promise;
     }
   );
-  const scheduledWorkResult = queue.enqueueScheduledWork(() => {
-    executionOrder.push("scheduled-work");
-    throw new Error("simulated scheduled work failure");
+  const alarmResult = queue.enqueueAlarm(() => {
+    executionOrder.push("alarm");
+    throw new Error("simulated alarm failure");
   });
   const secondResult = enqueueInvocation(queue,
     new Uint8Array([2]),
@@ -152,18 +152,18 @@ test("runtime entry queue continues after scheduled work fails", async () => {
   firstInvocation.resolve();
   await firstResult;
   await assert.rejects(
-    scheduledWorkResult,
-    /simulated scheduled work failure/
+    alarmResult,
+    /simulated alarm failure/
   );
   assert.equal(await secondResult, 2);
   assert.deepEqual(executionOrder, [
     "first-invocation",
-    "scheduled-work",
+    "alarm",
     "second-invocation",
   ]);
   assert.equal(queue.pendingInvocationCount, 0);
   assert.equal(queue.pendingInvocationByteCount, 0);
-  assert.equal(queue.pendingScheduledWorkCount, 0);
+  assert.equal(queue.pendingAlarmCount, 0);
 });
 
 function runtimeEntryQueue(

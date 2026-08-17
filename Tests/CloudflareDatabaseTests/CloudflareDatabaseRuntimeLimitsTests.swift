@@ -2,66 +2,49 @@ import CloudflareDatabase
 import Testing
 
 @Suite("Cloudflare database runtime limits")
-struct CloudflareDatabaseOperationLimitsTests {
-    @Test("limits reject values below minima and derive independent Wire budgets")
-    func rejectsValuesBelowProtocolMinima() {
+struct CloudflareDatabaseRuntimeLimitsTests {
+    @Test("payload limits are independent and bounded")
+    func validatesPayloadLimits() throws {
         #expect(
-            throws: CloudflareDatabaseOperationLimitsError.belowMinimum(
-                field: "maximumRequestBytes",
+            throws: CloudflareDatabaseRuntimeLimitsError.belowMinimum(
+                field: "maximumContextBytes",
                 value: 0,
                 minimum: 1
             )
         ) {
-            try CloudflareDatabaseOperationLimits(
-                maximumRequestBytes: 0,
-                maximumResponseBytes: 1,
-                maximumErrorBytes:
-                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
-                maximumPendingInvocations: 1
-            )
-        }
-        #expect(
-            throws: CloudflareDatabaseOperationLimitsError.belowMinimum(
-                field: "maximumErrorBytes",
-                value:
-                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes - 1,
-                minimum:
-                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes
-            )
-        ) {
-            try CloudflareDatabaseOperationLimits(
+            try CloudflareDatabaseRuntimeLimits(
+                maximumContextBytes: 0,
                 maximumRequestBytes: 1,
                 maximumResponseBytes: 1,
                 maximumErrorBytes:
-                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes - 1,
+                    CloudflareDatabaseRuntimeLimits.minimumErrorBytes,
                 maximumPendingInvocations: 1
             )
         }
 
-        do {
-            let limits = try CloudflareDatabaseOperationLimits(
-                maximumRequestBytes: 1_024,
-                maximumResponseBytes: 2_048,
-                maximumErrorBytes:
-                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
-                maximumPendingInvocations: 1
-            )
-            #expect(try limits.requestWireLimits().maximumFrameBytes == 1_024)
-            #expect(try limits.responseWireLimits().maximumFrameBytes == 2_048)
-        } catch {
-            Issue.record("Valid runtime limits failed: \(error)")
-        }
+        let limits = try CloudflareDatabaseRuntimeLimits(
+            maximumContextBytes: 1_024,
+            maximumRequestBytes: 2_048,
+            maximumResponseBytes: 4_096,
+            maximumErrorBytes:
+                CloudflareDatabaseRuntimeLimits.minimumErrorBytes,
+            maximumPendingInvocations: 8
+        )
+        #expect(limits.maximumContextBytes == 1_024)
+        #expect(limits.maximumRequestBytes == 2_048)
+        #expect(limits.maximumResponseBytes == 4_096)
     }
 
-    @Test("values above protocol maxima are rejected")
-    func rejectsValuesAboveProtocolMaxima() {
-        #expect(throws: CloudflareDatabaseOperationLimitsError.self) {
-            try CloudflareDatabaseOperationLimits(
-                maximumRequestBytes:
-                    CloudflareDatabaseOperationLimits.protocolMaximumFrameBytes + 1,
+    @Test("values above adapter maxima are rejected")
+    func rejectsValuesAboveMaximum() {
+        #expect(throws: CloudflareDatabaseRuntimeLimitsError.self) {
+            try CloudflareDatabaseRuntimeLimits(
+                maximumContextBytes:
+                    CloudflareDatabaseRuntimeLimits.maximumPayloadBytes + 1,
+                maximumRequestBytes: 1,
                 maximumResponseBytes: 1,
                 maximumErrorBytes:
-                    CloudflareDatabaseOperationLimits.protocolMinimumErrorBytes,
+                    CloudflareDatabaseRuntimeLimits.minimumErrorBytes,
                 maximumPendingInvocations: 1
             )
         }

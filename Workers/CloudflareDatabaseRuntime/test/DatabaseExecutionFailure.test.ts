@@ -19,10 +19,10 @@ test("database execution failures have a stable remote message contract", () => 
     ],
     [
       new DatabaseRuntimeInvocationError(
-        databaseCompletionStatus.invalidRequestFrame,
+        databaseCompletionStatus.applicationFailed,
         "private decoder detail",
       ),
-      databaseExecutionFailureCode.invalidRequest,
+      databaseExecutionFailureCode.runtimeFailure,
     ],
     [
       new DatabaseRuntimeInvocationError(
@@ -50,6 +50,13 @@ test("database execution failures have a stable remote message contract", () => 
     [
       new DatabaseInvocationTimeoutError(30_000),
       databaseExecutionFailureCode.timedOut,
+    ],
+    [
+      new DatabaseRuntimeInvocationError(
+        databaseCompletionStatus.cancelled,
+        "private cancellation detail",
+      ),
+      databaseExecutionFailureCode.cancelled,
     ],
     [new Error("private runtime detail"), databaseExecutionFailureCode.runtimeUnavailable],
   ];

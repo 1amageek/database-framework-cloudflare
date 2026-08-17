@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Cloudflare database completion status")
 struct CloudflareDatabaseCompletionStatusTests {
-    @Test("Swift statuses match the canonical ABI v1 vector")
+    @Test("Swift statuses match the canonical ABI v3 vector")
     func matchesCanonicalVector() throws {
         let testDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -12,7 +12,7 @@ struct CloudflareDatabaseCompletionStatusTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let vectorURL = repositoryDirectory
-            .appending(path: "Protocol/database-completion-status-v1.json")
+            .appending(path: "Protocol/database-completion-status-v3.json")
         let data = try Data(contentsOf: vectorURL)
         let decoded = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Int]
@@ -35,8 +35,9 @@ struct CloudflareDatabaseCompletionStatusTests {
             "startupFailed": Int(CloudflareDatabaseCompletionStatus.startupFailed.rawValue),
             "cancelled": Int(CloudflareDatabaseCompletionStatus.cancelled.rawValue),
             "runtimeFailed": Int(CloudflareDatabaseCompletionStatus.runtimeFailed.rawValue),
-            "invalidRequestFrame": Int(CloudflareDatabaseCompletionStatus.invalidRequestFrame.rawValue),
-            "scheduledWorkFailed": Int(CloudflareDatabaseCompletionStatus.scheduledWorkFailed.rawValue),
+            "contextTooLarge": Int(CloudflareDatabaseCompletionStatus.contextTooLarge.rawValue),
+            "alarmFailed": Int(CloudflareDatabaseCompletionStatus.alarmFailed.rawValue),
+            "applicationFailed": Int(CloudflareDatabaseCompletionStatus.applicationFailed.rawValue),
         ]
     }
 }

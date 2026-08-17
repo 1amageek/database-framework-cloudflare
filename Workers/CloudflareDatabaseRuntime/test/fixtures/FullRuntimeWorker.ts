@@ -4,11 +4,9 @@ import {
   DatabaseInvalidContentLengthError,
   DatabasePayloadTooLargeError,
   databaseMaxRequestBytes,
-  emptyDatabaseAuthorizationClaims,
-  hasDatabaseWireContentType,
   invalidContentLengthResponse,
   payloadTooLargeResponse,
-  readBoundedRequestBytes,
+  readBoundedPayloadBytes,
   rejectOversizedContentLength,
   type DatabaseRuntimeLimitEnvironment,
 } from "../../src/index";
@@ -27,7 +25,7 @@ export class RuntimeVerificationDurableObject
     super(state, environment, runtimeProgram);
   }
 
-  async runScheduledWorkForVerification(): Promise<void> {
+  async runAlarmForVerification(): Promise<void> {
     await this.alarm();
   }
 }
@@ -47,12 +45,14 @@ export default {
       "runtime-verification"
     );
     const database = environment.DATABASE.get(identifier);
-    if (new URL(request.url).pathname === "/scheduled-work") {
-      await database.runScheduledWorkForVerification();
+    if (new URL(request.url).pathname === "/alarm") {
+      await database.runAlarmForVerification();
       return new Response(null, { status: 204 });
     }
-    if (!hasDatabaseWireContentType(request)) {
-      return new Response("DatabaseWire requires application/octet-stream", {
+    const contentType = request.headers.get("content-type");
+    if (contentType?.split(";", 1)[0]?.trim().toLowerCase()
+        !== "application/octet-stream") {
+      return new Response("Binary application payload required", {
         status: 415,
       });
     }
@@ -68,7 +68,7 @@ export default {
 
     let requestBytes: Uint8Array;
     try {
-      requestBytes = await readBoundedRequestBytes(request, requestLimit);
+      requestBytes = await readBoundedPayloadBytes(request, requestLimit);
     } catch (error) {
       if (error instanceof DatabasePayloadTooLargeError) {
         return payloadTooLargeResponse(error.limit);
@@ -79,17 +79,16 @@ export default {
       throw error;
     }
 
-    const responseBytes = await database.execute(requestBytes, {
-      identifier: "runtime-verification",
-      roles: ["admin"],
-      claims: emptyDatabaseAuthorizationClaims(),
-    });
+    const responseBytes = await database.invoke(
+      requestBytes,
+      new TextEncoder().encode("runtime-verification")
+    );
     const responseBuffer = responseBytes.buffer;
     if (!(responseBuffer instanceof ArrayBuffer)
         || responseBytes.byteOffset !== 0
         || responseBytes.byteLength !== responseBuffer.byteLength) {
       throw new TypeError(
-        "Durable Object RPC returned a non-owning DatabaseWire response view"
+        "Durable Object RPC returned a non-owning application response view"
       );
     }
     return new Response(responseBuffer, {
