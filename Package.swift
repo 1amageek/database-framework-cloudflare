@@ -122,7 +122,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0817.0",
+            from: "26.0817.1",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
