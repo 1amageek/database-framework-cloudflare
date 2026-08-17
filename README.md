@@ -43,18 +43,16 @@ things:
 2. A `CloudflareDatabaseSession` that interprets opaque invocation bytes and
    uses that container.
 
-The application target depends directly on `CloudflareDatabase` and on the
-framework and declaration products used by its composition. This direct
-dependency is intentional: the adapter does not hide or own the application's
-schema and runtime feature selection.
+The application target depends on `CloudflareDatabase` and `DatabaseRuntime`.
+`DatabaseRuntime` re-exports the framework engine, schema declarations,
+primitive values, and only the runtime feature modules selected by package
+traits. `CloudflareDatabase` re-exports the two Cloudflare storage
+configuration values used by its public definition API. The adapter still does
+not own the application's schema or runtime feature selection.
 
 ```swift
 import CloudflareDatabase
-import DatabaseEngine
-import DatabaseKit
 import DatabaseRuntime
-import DatabaseTypes
-import StorageKit
 
 struct CalendarDatabaseApplication: CloudflareDatabaseApplication {
     func makeDefinition() async throws -> CloudflareDatabaseDefinition {

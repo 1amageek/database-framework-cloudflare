@@ -1,7 +1,6 @@
 import CloudflareDatabase
 @_spi(DatabaseExecution) import DatabaseEngine
-import DatabaseKit
-import DatabaseTypes
+import DatabaseRuntime
 
 actor RuntimeVerificationSession: CloudflareDatabaseSession {
     static let principalIdentifier = "runtime-verification"
