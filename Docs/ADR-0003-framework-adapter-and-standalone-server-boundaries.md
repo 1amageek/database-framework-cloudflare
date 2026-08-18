@@ -5,7 +5,7 @@
 - Supersedes: [ADR-0001](ADR-0001-full-runtime-reactor-abi.md)
 - Implementation status: Ownership migration, coordinated dependency releases,
   native and Embedded WASM behavior, workerd persistence, and versioned Worker
-  distribution verified for release `26.0817.0`
+  distribution verified for release `26.0818.0`
 
 ## Context
 
@@ -492,7 +492,7 @@ runtime's fixed delayed-task hook slots in the C ABI shim. They are installed
 exactly once under `installationState` and do not represent application state.
 
 The strict verification harnesses encode the reviewed logical test counts
-below. Evidence was collected on 2026-08-17 with the pinned Swift snapshot and
+below. Evidence was collected on 2026-08-18 with the pinned Swift snapshot and
 URL-resolved package graphs. A passed test row means the report contained the
 exact count with zero failures, skips, expected failures, runtime warnings, or
 internal tool errors. Every row required for this release is complete.
@@ -500,14 +500,14 @@ internal tool errors. Every row required for this release is complete.
 | Repository / suite | Selected traits | Expected tests | Current evidence |
 |---|---|---:|---|
 | `database-kit` | Standard | 641 | Passed 641/641 |
-| `database-kit` | `MultipleBases` | 654 | Passed 654/654 |
+| `database-kit` | `MultipleBases` | 656 | Passed 656/656 |
 | `database-framework` SQLite | `SQLite,AllRuntimeFeatures` | 111 | Passed 111/111 |
 | `database-framework` SQLite | `SQLite,AllRuntimeFeatures,MultipleBases` | 114 | Passed 114/114 |
 | `database-framework` semantic suites | `DatabaseEngineTests,GraphIndexTests` | 603 | Passed 603/603 |
 | `database-framework` PostgreSQL | `PostgreSQL,AllRuntimeFeatures,MultipleBases` | 72 | Passed 72/72 against an isolated PostgreSQL instance with negative readiness after shutdown |
-| `database-framework` FoundationDB | `FoundationDB,AllRuntimeFeatures,MultipleBases` | 3,715 | Passed 3,715/3,715 against an isolated FoundationDB 7.3 cluster with negative readiness after shutdown |
+| `database-framework` FoundationDB | `FoundationDB,AllRuntimeFeatures,MultipleBases` | 3,651 | Passed 3,651/3,651 against an isolated FoundationDB 7.3 cluster with negative readiness after shutdown |
 | `database-server` | Standard | 279 | Passed 279/279 |
-| `database-server` | `MultipleBases` | 302 | Passed 302/302 |
+| `database-server` | `MultipleBases` | 305 | Passed 305/305 |
 | `database-server` storage integration | SQLite, PostgreSQL, FoundationDB release artifact | — | Passed all three backends and negative readiness |
 | `database` CLI | Standard | 45 | Passed 45/45 |
 | `database` CLI | `MultipleBases` | 59 | Passed 59/59 |
@@ -515,9 +515,9 @@ internal tool errors. Every row required for this release is complete.
 | `database-framework-cloudflare` Native | Standard | 18 | Passed 18/18 |
 | `database-framework-cloudflare` Native | `MultipleBases` | 20 | Passed 20/20 |
 | `database-framework-cloudflare` Native | `AllRuntimeFeatures` | 21 | Passed 21/21 |
-| Cloudflare Worker dependency distribution | Versioned StorageKit host and Cloudflare runtime packages | — | Passed; the 39-entry, 24,414-byte `26.817.0` archive has SHA-256 `0ae8ce345d128d6e4b3753b1d1dd8efe09a5d57eea870b2c5fa30e834e9508f0`, a clean external consumer resolved the matching StorageKit `26.817.0` release archive, and its public subpaths imported successfully |
+| Cloudflare Worker dependency distribution | Versioned StorageKit host and Cloudflare runtime packages | — | Passed; the 39-entry, 24,428-byte `26.818.0` archive has SHA-256 `10af9694ae5444319b8769c1006d17ce0a8c4d054c739cec14fd9dc225687685`, a clean external consumer resolved the immutable StorageKit `26.817.0` release dependency, and Wrangler 4.123.0 bundled all public subpaths successfully |
 | Cloudflare Worker TypeScript | Adapter test graph | 120 | Passed 120/120; production dependency audit reported zero vulnerabilities |
-| Cloudflare Embedded WASM / workerd | `AllRuntimeFeatures` application reactor | — | Passed ABI v3, typed DBContainer write/read, Flat/IVF/PQ vector lifecycle, alarm delivery, workerd Durable Object RPC, and SQLite persistence after restart; 5,213,099 bytes raw, 1,849,470 bytes gzip, 64 MiB address space, and 30.128 ms startup |
+| Cloudflare Embedded WASM / workerd | `AllRuntimeFeatures` application reactor | — | Passed ABI v3, typed DBContainer write/read, Flat/IVF/PQ vector lifecycle, alarm delivery, workerd Durable Object RPC, and SQLite persistence after restart; 5,213,852 bytes raw, 1,849,720 bytes gzip, 64 MiB address space, and 30.500 ms startup |
 
 Trait selection is part of the evidence. The package-owned harnesses create an
 isolated source copy when a non-default trait graph is required, modify only
