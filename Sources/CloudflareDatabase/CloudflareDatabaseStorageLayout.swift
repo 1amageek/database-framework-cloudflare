@@ -1,4 +1,4 @@
-#if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+#if CLOUDFLARE_DATABASE_MULTI_BASE
 import DatabaseEngine
 import DatabaseKit
 
@@ -16,11 +16,13 @@ public struct CloudflareDatabaseStorageLayout: Sendable, Hashable {
         baseNamespacePath: [String]
     ) throws(CloudflareDatabaseConfigurationError) {
         guard !domainNamespacePath.isEmpty,
-              domainNamespacePath.allSatisfy({ !$0.isEmpty }) else {
+            domainNamespacePath.allSatisfy({ !$0.isEmpty })
+        else {
             throw .invalidStorageNamespacePath
         }
         guard !baseNamespacePath.isEmpty,
-              baseNamespacePath.allSatisfy({ !$0.isEmpty }) else {
+            baseNamespacePath.allSatisfy({ !$0.isEmpty })
+        else {
             throw .invalidBasePlacementPath
         }
         self.domainID = domainID

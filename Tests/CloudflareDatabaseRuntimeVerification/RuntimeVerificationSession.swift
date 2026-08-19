@@ -5,11 +5,11 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     static let principalIdentifier = "runtime-verification"
 
     private let container: DBContainer
-    #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+    #if CLOUDFLARE_RUNTIME_MULTI_BASE
     private let baseID: Base.ID
     #endif
 
-    #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+    #if CLOUDFLARE_RUNTIME_MULTI_BASE
     init(container: DBContainer, baseID: Base.ID) {
         self.container = container
         self.baseID = baseID
@@ -23,8 +23,10 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     func respond(
         to invocation: CloudflareDatabaseInvocation
     ) async throws -> ByteString {
-        guard Self.string(from: invocation.context)
-                == Self.principalIdentifier else {
+        guard
+            Self.string(from: invocation.context)
+                == Self.principalIdentifier
+        else {
             throw RuntimeVerificationError.unauthorizedContext
         }
         let request = Self.string(from: invocation.request)
@@ -35,7 +37,7 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             )
         )
         let context: DatabaseContext
-        #if CLOUDFLARE_RUNTIME_MULTIPLE_BASES
+        #if CLOUDFLARE_RUNTIME_MULTI_BASE
         context = container.session(authorization: authorization)
             .base(baseID)
             .newContext()
@@ -55,7 +57,8 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             return ByteString(Array(title.utf8))
         }
         if request == "get" {
-            let document = try await context
+            let document =
+                try await context
                 .fetch(RuntimeVerificationDocument.self)
                 .where(RuntimeVerificationDocument.fields.id == "document-1")
                 .first()
@@ -186,24 +189,29 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     private func updateVectorFixtures(
         in context: DatabaseContext
     ) async throws {
-        guard var flat = try await context
-            .fetch(RuntimeVerificationFlatDocument.self)
-            .where(
-                RuntimeVerificationFlatDocument.fields.id == "flat-anchor"
-            )
-            .first(),
-              var ivf = try await context
-            .fetch(RuntimeVerificationIVFDocument.self)
-            .where(
-                RuntimeVerificationIVFDocument.fields.id == "ivf-anchor"
-            )
-            .first(),
-              var pq = try await context
-            .fetch(RuntimeVerificationPQDocument.self)
-            .where(
-                RuntimeVerificationPQDocument.fields.id == "pq-anchor"
-            )
-            .first() else {
+        guard
+            var flat =
+                try await context
+                .fetch(RuntimeVerificationFlatDocument.self)
+                .where(
+                    RuntimeVerificationFlatDocument.fields.id == "flat-anchor"
+                )
+                .first(),
+            var ivf =
+                try await context
+                .fetch(RuntimeVerificationIVFDocument.self)
+                .where(
+                    RuntimeVerificationIVFDocument.fields.id == "ivf-anchor"
+                )
+                .first(),
+            var pq =
+                try await context
+                .fetch(RuntimeVerificationPQDocument.self)
+                .where(
+                    RuntimeVerificationPQDocument.fields.id == "pq-anchor"
+                )
+                .first()
+        else {
             throw RuntimeVerificationError.documentNotFound
         }
         flat.embedding = try Vector(float32: [0, 2])
@@ -218,24 +226,29 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     private func deleteVectorFixtures(
         in context: DatabaseContext
     ) async throws {
-        guard let flat = try await context
-            .fetch(RuntimeVerificationFlatDocument.self)
-            .where(
-                RuntimeVerificationFlatDocument.fields.id == "flat-anchor"
-            )
-            .first(),
-              let ivf = try await context
-            .fetch(RuntimeVerificationIVFDocument.self)
-            .where(
-                RuntimeVerificationIVFDocument.fields.id == "ivf-anchor"
-            )
-            .first(),
-              let pq = try await context
-            .fetch(RuntimeVerificationPQDocument.self)
-            .where(
-                RuntimeVerificationPQDocument.fields.id == "pq-anchor"
-            )
-            .first() else {
+        guard
+            let flat =
+                try await context
+                .fetch(RuntimeVerificationFlatDocument.self)
+                .where(
+                    RuntimeVerificationFlatDocument.fields.id == "flat-anchor"
+                )
+                .first(),
+            let ivf =
+                try await context
+                .fetch(RuntimeVerificationIVFDocument.self)
+                .where(
+                    RuntimeVerificationIVFDocument.fields.id == "ivf-anchor"
+                )
+                .first(),
+            let pq =
+                try await context
+                .fetch(RuntimeVerificationPQDocument.self)
+                .where(
+                    RuntimeVerificationPQDocument.fields.id == "pq-anchor"
+                )
+                .first()
+        else {
             throw RuntimeVerificationError.documentNotFound
         }
         try context.delete(flat)
@@ -249,7 +262,8 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
         query: [Float],
         expectedSuffix: String
     ) async throws {
-        let flat = try await context
+        let flat =
+            try await context
             .findSimilar(RuntimeVerificationFlatDocument.self)
             .vector(
                 RuntimeVerificationFlatDocument.fields.embedding,
@@ -258,7 +272,8 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             .query(query, k: 1)
             .metric(.dotProduct)
             .execute()
-        let ivf = try await context
+        let ivf =
+            try await context
             .findSimilar(RuntimeVerificationIVFDocument.self)
             .vector(
                 RuntimeVerificationIVFDocument.fields.embedding,
@@ -267,7 +282,8 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             .query(query, k: 1)
             .metric(.dotProduct)
             .execute()
-        let pq = try await context
+        let pq =
+            try await context
             .findSimilar(RuntimeVerificationPQDocument.self)
             .vector(
                 RuntimeVerificationPQDocument.fields.embedding,
@@ -277,8 +293,9 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             .metric(.dotProduct)
             .execute()
         guard flat.first?.item.id == "flat-\(expectedSuffix)",
-              ivf.first?.item.id == "ivf-\(expectedSuffix)",
-              pq.first?.item.id == "pq-\(expectedSuffix)" else {
+            ivf.first?.item.id == "ivf-\(expectedSuffix)",
+            pq.first?.item.id == "pq-\(expectedSuffix)"
+        else {
             throw RuntimeVerificationError.unexpectedVectorResult
         }
     }

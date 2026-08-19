@@ -1,0 +1,4 @@
+node_modules/
+.wrangler/
+src/database.wasm
+src/worker-configuration.d.ts

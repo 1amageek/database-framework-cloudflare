@@ -5,10 +5,14 @@ public protocol CloudflareDatabaseApplication: Sendable {
     associatedtype Session: CloudflareDatabaseSession
 
     /// Describes the database before the adapter creates platform storage.
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition
+    var configuration: CloudflareDatabaseConfiguration { get async throws }
 
-    /// Creates the application protocol session after the container is open.
+    /// Performs application-owned bootstrap and creates the protocol session
+    /// after the container is open. When the configuration attaches a
+    /// migration plan, ordinary data operations remain unavailable until the
+    /// application completes that migration through the container's
+    /// administrative API.
     func makeSession(
-        for container: DBContainer
+        for database: DBContainer
     ) async throws -> Session
 }

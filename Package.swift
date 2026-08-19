@@ -1,19 +1,19 @@
 // swift-tools-version: 6.4
-import PackageDescription
 import Foundation
+import PackageDescription
 
 // The Embedded WASI SDK ships Unicode tables outside the default linker search
 // path. Resolve the archive from the fixed Swift 6.4 SDK so every reactor
 // build links the same standard-library support without adding it to the
 // runtime dependency graph.
 let unicodeDataArchiveDirectory: String? = {
-    let snapshot = "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm"
+    let snapshot = "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm"
     let relativePath = "\(snapshot).artifactbundle/\(snapshot)/wasm32-unknown-wasip1/swift.xctoolchain/usr/lib/swift/embedded/wasm32-unknown-wasip1"
     let fileManager = FileManager.default
-    let home = fileManager.homeDirectoryForCurrentUser
+    let userHomeDirectory = fileManager.homeDirectoryForCurrentUser
     let roots = [
-        home.appendingPathComponent("Library/org.swift.swiftpm/swift-sdks"),
-        home.appendingPathComponent(".swiftpm/swift-sdks"),
+        userHomeDirectory.appendingPathComponent("Library/org.swift.swiftpm/swift-sdks"),
+        userHomeDirectory.appendingPathComponent(".swiftpm/swift-sdks"),
     ]
     for root in roots {
         let directory = root.appendingPathComponent(relativePath)
@@ -63,7 +63,6 @@ let databaseRuntimeFeatureNames: Set<String> = [
     "RankIndexes",
     "BitmapIndexes",
     "VersionIndexes",
-    "PermutedIndexes",
     "GraphIndexes",
     "AggregationIndexes",
     "LeaderboardIndexes",
@@ -76,7 +75,7 @@ var databaseRuntimeTraits = Set(
     }
 )
 databaseRuntimeTraits.insert(
-    .trait(name: "MultipleBases")
+    .trait(name: "MultiBase")
 )
 databaseRuntimeTraits.insert(
     .trait(
@@ -93,16 +92,16 @@ let databaseFrameworkDependencyTraits = Set(
     }
 ).union([
     .trait(
-        name: "MultipleBases",
-        condition: .when(traits: ["MultipleBases"])
-    ),
+        name: "MultiBase",
+        condition: .when(traits: ["MultiBase"])
+    )
 ])
 
 let databaseKitDependencyTraits: Set<Package.Dependency.Trait> = [
     .trait(
-        name: "MultipleBases",
-        condition: .when(traits: ["MultipleBases"])
-    ),
+        name: "MultiBase",
+        condition: .when(traits: ["MultiBase"])
+    )
 ]
 
 let package = Package(
@@ -112,7 +111,7 @@ let package = Package(
         .iOS(.v26),
     ],
     products: [
-        .library(name: "CloudflareDatabase", targets: ["CloudflareDatabase"]),
+        .library(name: "CloudflareDatabase", targets: ["CloudflareDatabase"])
     ],
     traits: databaseRuntimeTraits,
     dependencies: [
@@ -122,12 +121,12 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0818.0",
+            exact: "26.0819.3",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0818.0",
+            from: "26.0819.0",
             traits: databaseKitDependencyTraits
         ),
         .package(
@@ -160,8 +159,8 @@ let package = Package(
                     .when(traits: ["VectorIndexes"])
                 ),
                 .define(
-                    "CLOUDFLARE_DATABASE_MULTIPLE_BASES",
-                    .when(traits: ["MultipleBases"])
+                    "CLOUDFLARE_DATABASE_MULTI_BASE",
+                    .when(traits: ["MultiBase"])
                 ),
             ]
         ),
@@ -198,8 +197,8 @@ let package = Package(
                     .when(traits: ["VectorIndexes"])
                 ),
                 .define(
-                    "CLOUDFLARE_RUNTIME_MULTIPLE_BASES",
-                    .when(traits: ["MultipleBases"])
+                    "CLOUDFLARE_RUNTIME_MULTI_BASE",
+                    .when(traits: ["MultiBase"])
                 ),
             ],
             linkerSettings: unicodeDataSupportLinkerSettings + [
@@ -216,7 +215,7 @@ let package = Package(
                     "stack-size=8388608",
                     "-Xlinker",
                     "--initial-memory=67108864",
-                ], .when(platforms: [.wasi])),
+                ], .when(platforms: [.wasi]))
             ]
         ),
         .testTarget(
@@ -251,8 +250,8 @@ let package = Package(
                     .when(traits: ["VectorIndexes"])
                 ),
                 .define(
-                    "CLOUDFLARE_TEST_MULTIPLE_BASES",
-                    .when(traits: ["MultipleBases"])
+                    "CLOUDFLARE_TEST_MULTI_BASE",
+                    .when(traits: ["MultiBase"])
                 ),
             ]
         ),

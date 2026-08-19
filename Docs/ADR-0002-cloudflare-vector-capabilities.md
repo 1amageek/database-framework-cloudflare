@@ -41,13 +41,20 @@ index with no runtime configuration uses the framework default, Flat.
 Validation precedes migrations, persisted graph reads, graph allocation, and
 index initialization.
 
+`DatabaseRuntimeConfiguration.indexConfigurations` owns these algorithm
+parameters together with the compiled providers, executors, maintainers,
+entity runtimes, and authorization policies that interpret them. The
+Cloudflare adapter reads that canonical runtime configuration only to reject
+host-incompatible algorithms before opening the container; it does not define
+or duplicate index policy.
+
 There is no fallback. An HNSW declaration is never executed as Flat, IVF, or
 PQ, because doing so would change persistence layout, performance, recall, and
 operational semantics without application consent.
 
 ```mermaid
 flowchart TD
-    A["Application returns unopened container definition"] --> B["Resolve vector algorithms"]
+    A["Application returns unopened database configuration"] --> B["Resolve vector algorithms"]
     B --> C{"Any effective HNSW?"}
     C -->|"Yes"| D["Typed Cloudflare configuration error"]
     D --> E["startupFailed completion"]

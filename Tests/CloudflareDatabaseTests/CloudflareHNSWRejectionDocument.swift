@@ -13,9 +13,11 @@ struct CloudflareHNSWRejectionDocument {
     var embedding: Vector
 
     #Index(
-        .vector(dimensions: 2, metric: .dotProduct),
-        embedding: \CloudflareHNSWRejectionDocument.embedding,
-        name: "CloudflareHNSWRejectionDocument_embedding"
+        .vector(
+            name: "CloudflareHNSWRejectionDocument_embedding",
+            embedding: \CloudflareHNSWRejectionDocument.embedding,
+            dimensions: 2, metric: .dotProduct
+        )
     )
 }
 #endif

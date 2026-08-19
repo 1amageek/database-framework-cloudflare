@@ -8,13 +8,13 @@ struct CloudflareDatabaseHostingCapabilityTests {
     @Test("HNSW is rejected before platform storage opens")
     func rejectsHNSW() async throws {
         let application = try CloudflareHNSWRejectionApplication()
-        let definition = try await application.makeDefinition()
+        let configuration = try await application.configuration
         #expect(
             throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
                 indexName: "CloudflareHNSWRejectionDocument_embedding"
             )
         ) {
-            try definition.validateHostingCapabilities()
+            try configuration.validateHostingCapabilities()
         }
 
         let completion = RecordingCloudflareDatabaseCompletion()
@@ -35,30 +35,30 @@ struct CloudflareDatabaseHostingCapabilityTests {
 
     @Test("custom canonical HNSW configuration cannot bypass admission")
     func rejectsCustomHNSWConfiguration() async throws {
-        let definition = try await CloudflareHNSWRejectionApplication(
+        let configuration = try await CloudflareHNSWRejectionApplication(
             indexConfiguration: CustomHNSWRuntimeConfiguration()
-        ).makeDefinition()
+        ).configuration
 
         #expect(
             throws: CloudflareDatabaseConfigurationError.unsupportedHNSW(
                 indexName: "CloudflareHNSWRejectionDocument_embedding"
             )
         ) {
-            try definition.validateHostingCapabilities()
+            try configuration.validateHostingCapabilities()
         }
     }
 
     @Test("invalid vector configuration remains a typed failure")
     func rejectsInvalidVectorConfiguration() async throws {
-        let definition = try await CloudflareHNSWRejectionApplication(
+        let configuration = try await CloudflareHNSWRejectionApplication(
             indexConfiguration: InvalidVectorRuntimeConfiguration()
-        ).makeDefinition()
+        ).configuration
 
         #expect(
             throws: CloudflareDatabaseConfigurationError
                 .invalidVectorConfiguration
         ) {
-            try definition.validateHostingCapabilities()
+            try configuration.validateHostingCapabilities()
         }
     }
 }

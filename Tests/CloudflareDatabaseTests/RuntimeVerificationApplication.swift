@@ -6,7 +6,7 @@ final class RuntimeVerificationApplication:
     CloudflareDatabaseApplication,
     Sendable {
     private let partitionIdentity: StoragePartitionIdentity
-    #if CLOUDFLARE_TEST_MULTIPLE_BASES
+    #if CLOUDFLARE_TEST_MULTI_BASE
     private let storageLayout: CloudflareDatabaseStorageLayout
     #endif
 
@@ -14,53 +14,65 @@ final class RuntimeVerificationApplication:
         self.partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        #if CLOUDFLARE_TEST_MULTI_BASE
         self.storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "runtime-verification"
         )
         #endif
     }
 
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
-        let schema = try RuntimeVerificationSchemaV1.makeSchema()
-        let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
-            entityRuntimes: [
-                try DatabaseFrameworkRuntime.entity(
-                    RuntimeVerificationDocument.self
-                )
-            ],
-            authorizationPolicies: [
-                AuthorizationPolicyHandler(RuntimeVerificationDocument.self)
-            ]
-        )
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        return CloudflareDatabaseDefinition(
-            partitionIdentity: partitionIdentity,
-            storageLayout: storageLayout,
-            schema: schema,
-            migrationPlan: RuntimeVerificationMigrationPlan.self,
-            runtimeConfiguration: runtimeConfiguration,
-            security: .enabled()
-        )
-        #else
-        return CloudflareDatabaseDefinition(
-            partitionIdentity: partitionIdentity,
-            schema: schema,
-            migrationPlan: RuntimeVerificationMigrationPlan.self,
-            runtimeConfiguration: runtimeConfiguration,
-            security: .enabled()
-        )
-        #endif
+    var configuration: CloudflareDatabaseConfiguration {
+        get async throws {
+            let schema = try RuntimeVerificationSchemaV1.makeSchema()
+            let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
+                executionIdentity: DatabaseExecutionRuntimeIdentity(
+                    identifier: "database-framework-cloudflare-tests",
+                    revision: 1
+                ),
+                entityRuntimes: [
+                    try DatabaseFrameworkRuntime.entity(
+                        RuntimeVerificationDocument.self
+                    )
+                ],
+                authorizationPolicies: [
+                    AuthorizationPolicyHandler(RuntimeVerificationDocument.self)
+                ]
+            )
+            #if CLOUDFLARE_TEST_MULTI_BASE
+            return CloudflareDatabaseConfiguration(
+                partitionIdentity: partitionIdentity,
+                storageLayout: storageLayout,
+                schema: schema,
+                migrationPlan: RuntimeVerificationMigrationPlan.self,
+                runtimeConfiguration: runtimeConfiguration,
+                security: .enabled()
+            )
+            #else
+            return CloudflareDatabaseConfiguration(
+                partitionIdentity: partitionIdentity,
+                schema: schema,
+                migrationPlan: RuntimeVerificationMigrationPlan.self,
+                runtimeConfiguration: runtimeConfiguration,
+                security: .enabled()
+            )
+            #endif
+        }
     }
 
     func makeSession(
-        for container: DBContainer
+        for database: DBContainer
     ) async throws -> RuntimeVerificationSession {
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        let authorization = AuthorizationContext.authenticated(
+            Principal(
+                identifier: RuntimeVerificationSession.principalIdentifier,
+                roles: ["admin"]
+            )
+        )
+        #if CLOUDFLARE_TEST_MULTI_BASE
         let baseID = try Base.ID("runtime-verification")
-        _ = try await container.executionProvisionBaseRecord(
+        _ = try await database.executionProvisionBaseRecord(
             baseID,
-            placementID: container.executionDefaultBasePlacementID,
+            placementID: database.executionDefaultBasePlacementID,
             initialGrants: [
                 Security.Grant(
                     subject: .principal(
@@ -72,12 +84,18 @@ final class RuntimeVerificationApplication:
             ],
             expectedRevision: 0
         )
+        try await database.session(authorization: authorization)
+            .base(baseID)
+            .admin()
+            .migrateIfNeeded()
         return RuntimeVerificationSession(
-            container: container,
+            container: database,
             baseID: baseID
         )
         #else
-        return RuntimeVerificationSession(container: container)
+        try await database.admin(authorization: authorization)
+            .migrateIfNeeded()
+        return RuntimeVerificationSession(container: database)
         #endif
     }
 }

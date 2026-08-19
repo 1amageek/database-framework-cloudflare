@@ -1,4 +1,4 @@
-#if CLOUDFLARE_TEST_MULTIPLE_BASES
+#if CLOUDFLARE_TEST_MULTI_BASE
 import CloudflareDatabase
 import DatabaseEngine
 import DatabaseKit

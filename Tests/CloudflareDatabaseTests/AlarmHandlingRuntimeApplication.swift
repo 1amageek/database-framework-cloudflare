@@ -9,15 +9,17 @@ actor AlarmHandlingRuntimeApplication: CloudflareDatabaseApplication {
         self.wrapped = try RuntimeVerificationApplication()
     }
 
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
-        try await wrapped.makeDefinition()
+    var configuration: CloudflareDatabaseConfiguration {
+        get async throws {
+            try await wrapped.configuration
+        }
     }
 
     func makeSession(
-        for container: DBContainer
+        for database: DBContainer
     ) async throws -> AlarmHandlingRuntimeSession {
         let createdSession = AlarmHandlingRuntimeSession(
-            wrapped: try await wrapped.makeSession(for: container)
+            wrapped: try await wrapped.makeSession(for: database)
         )
         session = createdSession
         return createdSession

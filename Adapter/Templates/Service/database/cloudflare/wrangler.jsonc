@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "{{service.cloudflare.workerName}}",
+  "main": "src/index.ts",
+  "compatibility_date": "{{service.cloudflare.compatibilityDate}}",
+  "base_dir": "src",
+  "rules": [
+    {
+      "type": "CompiledWasm",
+      "globs": ["database.wasm"],
+      "fallthrough": true
+    }
+  ],
+  "vars": {
+    "DATABASE_ID": "{{service.cloudflare.databaseID}}",
+    "DATABASE_OBJECT_NAME": "{{service.cloudflare.objectName}}"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "{{service.cloudflare.bindingName}}",
+        "class_name": "{{service.cloudflare.className}}"
+      }
+    ]
+  },
+  "exports": {
+    "{{service.cloudflare.className}}": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "observability": {
+    "enabled": true
+  }
+}

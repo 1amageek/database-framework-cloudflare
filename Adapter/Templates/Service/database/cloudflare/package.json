@@ -1,0 +1,21 @@
+{
+  "name": "{{service.application.kebabName}}-cloudflare-database",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "deploy:check": "node scripts/validate-worker-bundle-size.mjs 3145728",
+    "types:generate": "wrangler types src/worker-configuration.d.ts --env-interface CloudflareBindings --include-runtime false --config wrangler.jsonc",
+    "types:check": "wrangler types src/worker-configuration.d.ts --env-interface CloudflareBindings --include-runtime false --check --config wrangler.jsonc",
+    "typecheck": "npm run types:check && tsc --noEmit"
+  },
+  "dependencies": {
+    "@database-framework-cloudflare/cloudflare-database-runtime": "file:{{service.adapter.root}}/Workers/CloudflareDatabaseRuntime"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260819.1",
+    "typescript": "6.0.3",
+    "wrangler": "4.123.0"
+  }
+}

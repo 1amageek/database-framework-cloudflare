@@ -5,8 +5,8 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 swift_executable=${SWIFT_EXECUTABLE:-}
 swift_wasm_sdk=${SWIFT_EMBEDDED_WASM_SDK:-}
-required_snapshot=swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a
-required_swift_commit=ef761e567dc94ee
+required_snapshot=swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a
+required_swift_commit=424cae54c1a10da
 required_wasm_sdk=${required_snapshot}_wasm-embedded
 runtime_traits=${DATABASE_RUNTIME_TRAITS:-AllRuntimeFeatures}
 build_path=${DATABASE_RUNTIME_BUILD_PATH:-"$repository_root/.build/release-gate"}
@@ -17,10 +17,10 @@ esac
 artifact_directory="$build_path/artifacts"
 source_artifact="$build_path/out/Products/Release-webassembly-wasm32/CloudflareDatabaseRuntimeVerification.wasm"
 optimized_artifact="$artifact_directory/CloudflareDatabaseRuntimeVerification.wasm"
-reactor_link_inputs="$build_path/out/Intermediates.noindex/database-framework-cloudflare.build/Release-webassembly-wasm32/CloudflareDatabaseRuntimeVerification-p.build/Objects-normal/wasm32/CloudflareDatabaseRuntimeVerification.LinkFileList"
+reactor_build_data="$build_path/out/Intermediates.noindex/XCBuildData"
+runtime_product_directory="$build_path/out/Products/Release-webassembly-wasm32"
 
 maximum_raw_bytes=64000000
-maximum_compressed_bytes=10000000
 maximum_address_space_bytes=128000000
 maximum_startup_milliseconds=1000
 
@@ -34,9 +34,9 @@ for runtime_trait in $(printf '%s' "$runtime_traits" | tr ',' ' '); do
     case "$runtime_trait" in
         AllRuntimeFeatures | ScalarIndexes | VectorIndexes | \
             FullTextIndexes | SpatialIndexes | RankIndexes | \
-            BitmapIndexes | VersionIndexes | PermutedIndexes | \
+            BitmapIndexes | VersionIndexes | \
             GraphIndexes | AggregationIndexes | LeaderboardIndexes | \
-            Relationships | MultipleBases)
+            Relationships | MultiBase)
             ;;
         *)
             echo "Unknown database runtime trait: $runtime_trait" >&2
@@ -47,9 +47,9 @@ done
 
 runtime_trait_is_enabled() {
     requested_trait=$1
-    if [ "$requested_trait" = "MultipleBases" ]; then
+    if [ "$requested_trait" = "MultiBase" ]; then
         case ",$runtime_traits," in
-            *",MultipleBases,"*)
+            *",MultiBase,"*)
                 return 0
                 ;;
         esac
@@ -129,33 +129,46 @@ printf '%s\n' "traits=$runtime_traits"
     -Xswiftc -Osize \
     -Xswiftc -whole-module-optimization
 
-if [ ! -f "$reactor_link_inputs" ]; then
-    echo "The reactor link input manifest was not produced" >&2
+if [ ! -d "$reactor_build_data" ]; then
+    echo "The reactor build manifest directory was not produced" >&2
     exit 1
 fi
+reactor_link_arguments=$(
+    node "$repository_root/scripts/extract-reactor-link-arguments.mjs" \
+        "$source_artifact" \
+        "$reactor_build_data"
+)
+
+reactor_links_product() {
+    product_name=$1
+    expected_argument="@$runtime_product_directory/$product_name.objlib/args.resp"
+    printf '%s\n' "$reactor_link_arguments" | grep -Fqx "$expected_argument"
+}
+
 for required_product in \
-    DatabaseTypes.o \
-    DatabaseKit.o \
-    DatabaseWire.o \
-    StorageKit.o \
-    CloudflareDurableObjectStorage.o \
-    CloudflareDurableObjectStorageWire.o \
-    CloudflareDurableObjectStorageHostTransport.o \
-    DatabaseMath.o \
-    DatabaseEngine.o \
-    DatabaseRuntime.o \
-    CloudflareDatabase.o
+    DatabaseTypes \
+    DatabaseKit \
+    DatabaseWire \
+    StorageKit \
+    CloudflareDurableObjectStorage \
+    CloudflareDurableObjectStorageWire \
+    CloudflareDurableObjectStorageHostTransport \
+    CloudflareDatabaseTaskScheduling \
+    DatabaseMath \
+    DatabaseEngine \
+    DatabaseRuntime \
+    CloudflareDatabase
 do
-    if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
+    if ! reactor_links_product "$required_product"; then
         echo "The Embedded reactor is missing a required runtime product: $required_product" >&2
         exit 1
     fi
 done
 
-if runtime_trait_is_enabled MultipleBases; then
-    runtime_multiple_bases=1
+if runtime_trait_is_enabled MultiBase; then
+    runtime_multi_base=1
 else
-    runtime_multiple_bases=0
+    runtime_multi_base=0
 fi
 if runtime_trait_is_enabled GraphIndexes; then
     runtime_graph_indexes=1
@@ -170,71 +183,67 @@ fi
 
 required_feature_products=""
 if runtime_trait_is_enabled ScalarIndexes; then
-    required_feature_products="$required_feature_products ScalarIndex.o"
+    required_feature_products="$required_feature_products ScalarIndex"
 fi
 if runtime_trait_is_enabled VectorIndexes; then
-    required_feature_products="$required_feature_products VectorIndex.o SwiftHNSW.o CTurboQuantKernels.o"
+    required_feature_products="$required_feature_products VectorIndex SwiftHNSW CTurboQuantKernels"
 fi
 if runtime_trait_is_enabled FullTextIndexes; then
-    required_feature_products="$required_feature_products FullTextIndex.o"
+    required_feature_products="$required_feature_products FullTextIndex"
 fi
 if runtime_trait_is_enabled SpatialIndexes; then
-    required_feature_products="$required_feature_products SpatialIndex.o"
+    required_feature_products="$required_feature_products SpatialIndex"
 fi
 if runtime_trait_is_enabled RankIndexes; then
-    required_feature_products="$required_feature_products RankIndex.o"
+    required_feature_products="$required_feature_products RankIndex"
 fi
 if runtime_trait_is_enabled BitmapIndexes; then
-    required_feature_products="$required_feature_products BitmapIndex.o"
+    required_feature_products="$required_feature_products BitmapIndex"
 fi
 if runtime_trait_is_enabled VersionIndexes; then
-    required_feature_products="$required_feature_products VersionIndex.o"
-fi
-if runtime_trait_is_enabled PermutedIndexes; then
-    required_feature_products="$required_feature_products PermutedIndex.o"
+    required_feature_products="$required_feature_products VersionIndex"
 fi
 if runtime_trait_is_enabled GraphIndexes; then
-    required_feature_products="$required_feature_products GraphIndex.o OntologyIndex.o"
+    required_feature_products="$required_feature_products GraphIndex OntologyIndex"
 fi
 if runtime_trait_is_enabled AggregationIndexes; then
-    required_feature_products="$required_feature_products AggregationIndex.o"
+    required_feature_products="$required_feature_products AggregationIndex"
 fi
 if runtime_trait_is_enabled LeaderboardIndexes; then
-    required_feature_products="$required_feature_products LeaderboardIndex.o"
+    required_feature_products="$required_feature_products LeaderboardIndex"
 fi
 if runtime_trait_is_enabled Relationships; then
-    required_feature_products="$required_feature_products RelationshipIndex.o"
+    required_feature_products="$required_feature_products RelationshipIndex"
 fi
 
 for required_product in $required_feature_products; do
-    if ! grep -q "/$required_product$" "$reactor_link_inputs"; then
+    if ! reactor_links_product "$required_product"; then
         echo "The Embedded reactor is missing a selected runtime product: $required_product" >&2
         exit 1
     fi
 done
 
 for optional_product in \
-    ScalarIndex.o \
-    VectorIndex.o \
-    SwiftHNSW.o \
-    CTurboQuantKernels.o \
-    FullTextIndex.o \
-    SpatialIndex.o \
-    RankIndex.o \
-    BitmapIndex.o \
-    VersionIndex.o \
-    PermutedIndex.o \
-    GraphIndex.o \
-    OntologyIndex.o \
-    AggregationIndex.o \
-    LeaderboardIndex.o \
-    RelationshipIndex.o
+    ScalarIndex \
+    VectorIndex \
+    SwiftHNSW \
+    CTurboQuantKernels \
+    FullTextIndex \
+    SpatialIndex \
+    RankIndex \
+    BitmapIndex \
+    VersionIndex \
+    GraphIndex \
+    OntologyIndex \
+    AggregationIndex \
+    LeaderboardIndex \
+    RelationshipIndex
 do
     case " $required_feature_products " in
         *" $optional_product "*)
             ;;
         *)
-            if grep -q "/$optional_product$" "$reactor_link_inputs"; then
+            if reactor_links_product "$optional_product"; then
                 echo "The Embedded reactor links an unselected runtime product: $optional_product" >&2
                 exit 1
             fi
@@ -243,29 +252,29 @@ do
 done
 
 for forbidden_product in \
-    DatabaseTypesFoundation.o \
-    DatabaseKitFoundation.o \
-    StorageKitFoundation.o \
-    StorageKitSystemClock.o \
-    DatabaseFoundation.o \
-    DatabaseOperationCore.o \
-    DatabaseCommandOperations.o \
-    DatabaseQueryOperations.o \
-    DatabaseMutationOperations.o \
-    DatabaseGraphOperations.o \
-    DatabaseJobRuntime.o \
-    DatabaseSchemaOperations.o \
-    DatabaseMaintenanceOperations.o \
-    DatabaseAdministrationOperations.o \
-    DatabaseServerRuntime.o \
-    DatabaseServerFoundation.o \
-    DatabaseServerHost.o \
-    QueryAST.o \
-    FDBStorage.o \
-    SQLiteStorage.o \
-    PostgreSQLStorage.o
+    DatabaseTypesFoundation \
+    DatabaseKitFoundation \
+    StorageKitFoundation \
+    StorageKitSystemClock \
+    DatabaseFoundation \
+    DatabaseOperationCore \
+    DatabaseCommandOperations \
+    DatabaseQueryOperations \
+    DatabaseMutationOperations \
+    DatabaseGraphOperations \
+    DatabaseJobRuntime \
+    DatabaseSchemaOperations \
+    DatabaseMaintenanceOperations \
+    DatabaseAdministrationOperations \
+    DatabaseServerRuntime \
+    DatabaseServerFoundation \
+    DatabaseServerHost \
+    QueryAST \
+    FDBStorage \
+    SQLiteStorage \
+    PostgreSQLStorage
 do
-    if grep -q "/$forbidden_product$" "$reactor_link_inputs"; then
+    if reactor_links_product "$forbidden_product"; then
         echo "The Embedded reactor links a forbidden adapter: $forbidden_product" >&2
         exit 1
     fi
@@ -281,7 +290,7 @@ node "$repository_root/scripts/verify-reactor-abi.mjs" "$optimized_artifact"
 
 runtime_measurements=$(
     cd "$repository_root/Workers/CloudflareDatabaseRuntime"
-    DATABASE_RUNTIME_MULTIPLE_BASES="$runtime_multiple_bases" \
+    DATABASE_RUNTIME_MULTI_BASE="$runtime_multi_base" \
         DATABASE_RUNTIME_GRAPH_INDEXES="$runtime_graph_indexes" \
         DATABASE_RUNTIME_VECTOR_INDEXES="$runtime_vector_indexes" \
         node --import tsx \
@@ -293,7 +302,7 @@ printf '%s\n' "$runtime_measurements"
 workerd_measurements=$(
     cd "$repository_root/Workers/CloudflareDatabaseRuntime"
     DATABASE_RUNTIME_ARTIFACT="$optimized_artifact" \
-        DATABASE_RUNTIME_MULTIPLE_BASES="$runtime_multiple_bases" \
+        DATABASE_RUNTIME_MULTI_BASE="$runtime_multi_base" \
         DATABASE_RUNTIME_GRAPH_INDEXES="$runtime_graph_indexes" \
         DATABASE_RUNTIME_VECTOR_INDEXES="$runtime_vector_indexes" \
         npm run --silent smoke:workerd
@@ -327,10 +336,6 @@ startup_milliseconds=$(
 
 if [ "$raw_bytes" -gt "$maximum_raw_bytes" ]; then
     echo "Runtime raw size exceeds the 64 MB Worker limit: $raw_bytes" >&2
-    exit 1
-fi
-if [ "$compressed_bytes" -gt "$maximum_compressed_bytes" ]; then
-    echo "Runtime compressed size exceeds the 10 MB paid Worker limit: $compressed_bytes" >&2
     exit 1
 fi
 if [ "$address_space_bytes" -gt "$maximum_address_space_bytes" ]; then

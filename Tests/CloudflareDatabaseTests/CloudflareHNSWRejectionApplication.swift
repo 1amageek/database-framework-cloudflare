@@ -12,7 +12,7 @@ final class CloudflareHNSWRejectionApplication:
     CloudflareDatabaseApplication,
     Sendable {
     private let partitionIdentity: StoragePartitionIdentity
-    #if CLOUDFLARE_TEST_MULTIPLE_BASES
+    #if CLOUDFLARE_TEST_MULTI_BASE
     private let storageLayout: CloudflareDatabaseStorageLayout
     #endif
     private let indexConfiguration: any IndexRuntimeConfiguration
@@ -23,56 +23,59 @@ final class CloudflareHNSWRejectionApplication:
         self.partitionIdentity = try StoragePartitionIdentity(
             databaseID: "cloudflare-hnsw-rejection"
         )
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        #if CLOUDFLARE_TEST_MULTI_BASE
         self.storageLayout = try makeCloudflareTestStorageLayout(
             namespace: "hnsw-rejection"
         )
         #endif
-        self.indexConfiguration = indexConfiguration
-            ?? VectorIndexConfiguration<CloudflareHNSWRejectionDocument>(
-                field: CloudflareHNSWRejectionDocument.fields.embedding,
+        self.indexConfiguration =
+            indexConfiguration
+            ?? VectorIndexConfiguration(
+                indexName: "CloudflareHNSWRejectionDocument_embedding",
                 algorithm: .hnsw(.default)
             )
     }
 
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
-        let schema = try Schema(
-            entities: [try CloudflareHNSWRejectionDocument.schemaEntity]
-        )
-        let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
-            entityRuntimes: [
-                try DatabaseFrameworkRuntime.entity(
-                    CloudflareHNSWRejectionDocument.self
-                )
-            ]
-        )
-        let indexConfigurations: [any IndexRuntimeConfiguration] = [
-            indexConfiguration
-        ]
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
-        return CloudflareDatabaseDefinition(
-            partitionIdentity: partitionIdentity,
-            storageLayout: storageLayout,
-            schema: schema,
-            runtimeConfiguration: runtimeConfiguration,
-            security: .enabled(),
-            indexConfigurations: indexConfigurations
-        )
-        #else
-        return CloudflareDatabaseDefinition(
-            partitionIdentity: partitionIdentity,
-            schema: schema,
-            runtimeConfiguration: runtimeConfiguration,
-            security: .enabled(),
-            indexConfigurations: indexConfigurations
-        )
-        #endif
+    var configuration: CloudflareDatabaseConfiguration {
+        get async throws {
+            let schema = try Schema(
+                entities: [try CloudflareHNSWRejectionDocument.schemaEntity]
+            )
+            let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(
+                executionIdentity: DatabaseExecutionRuntimeIdentity(
+                    identifier: "database-framework-cloudflare-tests",
+                    revision: 1
+                ),
+                entityRuntimes: [
+                    try DatabaseFrameworkRuntime.entity(
+                        CloudflareHNSWRejectionDocument.self
+                    )
+                ],
+                indexConfigurations: [indexConfiguration]
+            )
+            #if CLOUDFLARE_TEST_MULTI_BASE
+            return CloudflareDatabaseConfiguration(
+                partitionIdentity: partitionIdentity,
+                storageLayout: storageLayout,
+                schema: schema,
+                runtimeConfiguration: runtimeConfiguration,
+                security: .enabled()
+            )
+            #else
+            return CloudflareDatabaseConfiguration(
+                partitionIdentity: partitionIdentity,
+                schema: schema,
+                runtimeConfiguration: runtimeConfiguration,
+                security: .enabled()
+            )
+            #endif
+        }
     }
 
     func makeSession(
-        for container: DBContainer
+        for database: DBContainer
     ) async throws -> RejectedHNSWSession {
-        _ = container
+        _ = database
         return RejectedHNSWSession()
     }
 }

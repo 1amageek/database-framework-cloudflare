@@ -106,11 +106,11 @@ failures, cancellations, skips, or todos.
 ## Distribution
 
 The package version uses npm-compatible numeric SemVer. Git release
-`26.0818.0` therefore contains package version `26.818.0`. Consumers install
+`26.0819.0` therefore contains package version `26.819.0`. Consumers install
 the immutable archive attached to that GitHub release:
 
 ```bash
-npm install --save-exact https://github.com/1amageek/database-framework-cloudflare/releases/download/26.0818.0/database-framework-cloudflare-cloudflare-database-runtime-26.818.0.tgz
+npm install --save-exact https://github.com/1amageek/database-framework-cloudflare/releases/download/26.0819.0/database-framework-cloudflare-cloudflare-database-runtime-26.819.0.tgz
 ```
 
 Its StorageKit host dependency is locked to the matching immutable

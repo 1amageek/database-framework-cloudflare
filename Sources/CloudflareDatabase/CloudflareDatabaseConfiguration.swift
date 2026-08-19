@@ -4,9 +4,9 @@ import CloudflareDurableObjectStorageWire
 import DatabaseKit
 import StorageKit
 
-/// Immutable application definition consumed by the Cloudflare adapter.
-public struct CloudflareDatabaseDefinition: Sendable {
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+/// Immutable application configuration consumed by the Cloudflare adapter.
+public struct CloudflareDatabaseConfiguration: Sendable {
+    #if CLOUDFLARE_DATABASE_MULTI_BASE
     private struct StorageSelection: Sendable {
         let layout: CloudflareDatabaseStorageLayout
 
@@ -15,22 +15,24 @@ public struct CloudflareDatabaseDefinition: Sendable {
         }
     }
 
-    private typealias OpenContainer = @Sendable (
-        DatabaseStorageTopology,
-        any StorageMonotonicClock,
-        any WallClock
-    ) async throws -> DBContainer
+    private typealias OpenContainer =
+        @Sendable (
+            DatabaseStorageTopology,
+            any StorageMonotonicClock,
+            any WallClock
+        ) async throws -> DBContainer
     #else
     private struct StorageSelection: Sendable {
         init() {}
     }
 
-    private typealias OpenContainer = @Sendable (
-        any StorageEngine,
-        Subspace,
-        any StorageMonotonicClock,
-        any WallClock
-    ) async throws -> DBContainer
+    private typealias OpenContainer =
+        @Sendable (
+            any StorageEngine,
+            Subspace,
+            any StorageMonotonicClock,
+            any WallClock
+        ) async throws -> DBContainer
     #endif
 
     public let partitionIdentity: StoragePartitionIdentity
@@ -38,17 +40,17 @@ public struct CloudflareDatabaseDefinition: Sendable {
     public let declaredSchema: Schema
     public let security: SecurityConfiguration
     public let databaseName: String?
-    public let indexConfigurations: [any IndexRuntimeConfiguration]
     public let itemStorage: ItemStorageConfiguration
     public let logging: DatabaseLoggingConfiguration
     public let metrics: DatabaseMetricsConfiguration
+    package let runtimeConfiguration: DatabaseRuntimeConfiguration
 
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+    #if CLOUDFLARE_DATABASE_MULTI_BASE
     public let storageLayout: CloudflareDatabaseStorageLayout
     #endif
     private let openContainer: OpenContainer
 
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+    #if CLOUDFLARE_DATABASE_MULTI_BASE
     /// Defines a container backed by a statically compiled schema.
     public init(
         partitionIdentity: StoragePartitionIdentity,
@@ -58,7 +60,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
-        indexConfigurations: [any IndexRuntimeConfiguration] = [],
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -68,9 +69,9 @@ public struct CloudflareDatabaseDefinition: Sendable {
             storageLimits: storageLimits,
             storageSelection: StorageSelection(storageLayout),
             schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
-            indexConfigurations: indexConfigurations,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -82,7 +83,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
                         storageTopology: topology,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
-                        indexConfigurations: indexConfigurations,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -104,7 +104,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
-        indexConfigurations: [any IndexRuntimeConfiguration] = [],
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -114,9 +113,9 @@ public struct CloudflareDatabaseDefinition: Sendable {
             storageLimits: storageLimits,
             storageSelection: StorageSelection(storageLayout),
             schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
-            indexConfigurations: indexConfigurations,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -129,7 +128,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
                         storageTopology: topology,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
-                        indexConfigurations: indexConfigurations,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -149,7 +147,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
-        indexConfigurations: [any IndexRuntimeConfiguration] = [],
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -159,9 +156,9 @@ public struct CloudflareDatabaseDefinition: Sendable {
             storageLimits: storageLimits,
             storageSelection: StorageSelection(),
             schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
-            indexConfigurations: indexConfigurations,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -174,7 +171,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
                         databaseRoot: root,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
-                        indexConfigurations: indexConfigurations,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -195,7 +191,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
-        indexConfigurations: [any IndexRuntimeConfiguration] = [],
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -205,9 +200,9 @@ public struct CloudflareDatabaseDefinition: Sendable {
             storageLimits: storageLimits,
             storageSelection: StorageSelection(),
             schema: schema,
+            runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
-            indexConfigurations: indexConfigurations,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -221,7 +216,6 @@ public struct CloudflareDatabaseDefinition: Sendable {
                         databaseRoot: root,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
-                        indexConfigurations: indexConfigurations,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -239,9 +233,9 @@ public struct CloudflareDatabaseDefinition: Sendable {
         storageLimits: CloudflareDurableObjectLimits,
         storageSelection: StorageSelection,
         schema: Schema,
+        runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration,
         databaseName: String?,
-        indexConfigurations: [any IndexRuntimeConfiguration],
         itemStorage: ItemStorageConfiguration,
         logging: DatabaseLoggingConfiguration,
         metrics: DatabaseMetricsConfiguration,
@@ -249,22 +243,22 @@ public struct CloudflareDatabaseDefinition: Sendable {
     ) {
         self.partitionIdentity = partitionIdentity
         self.storageLimits = storageLimits
-        #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+        #if CLOUDFLARE_DATABASE_MULTI_BASE
         self.storageLayout = storageSelection.layout
         #else
         _ = storageSelection
         #endif
         self.declaredSchema = schema
+        self.runtimeConfiguration = runtimeConfiguration
         self.security = security
         self.databaseName = databaseName
-        self.indexConfigurations = indexConfigurations
         self.itemStorage = itemStorage
         self.logging = logging
         self.metrics = metrics
         self.openContainer = openContainer
     }
 
-    #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+    #if CLOUDFLARE_DATABASE_MULTI_BASE
     package func open(
         storageTopology: DatabaseStorageTopology,
         monotonicClock: any StorageMonotonicClock,

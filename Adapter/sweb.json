@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 3,
+  "kind": "adapter",
+  "id": "database-framework-cloudflare",
+  "defaults": {
+    "host": null,
+    "deployment": null
+  },
+  "hosts": {},
+  "deployments": {},
+  "services": {
+    "database": {
+      "produces": ["cloudflare.external-durable-object"],
+      "templates": [
+        {
+          "source": "Adapter/Templates/Service/database/wasm",
+          "destination": "wasm"
+        },
+        {
+          "source": "Adapter/Templates/Service/database/cloudflare",
+          "destination": "cloudflare"
+        }
+      ],
+      "variables": {
+        "database.maximumMemoryBytes": "67108864",
+        "cloudflare.bindingName": "DATABASE",
+        "cloudflare.className": "CloudflareDatabaseObject",
+        "cloudflare.compatibilityDate": "2026-08-19",
+        "cloudflare.databaseID": "application",
+        "cloudflare.objectName": "default",
+        "cloudflare.workerName": "cloudflare-database",
+        "swiftSDK": "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm-embedded",
+        "swiftSnapshot": "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a",
+        "swiftToolchain": "org.swift.64202608141a"
+      },
+      "operations": {
+        "prepare": [
+          {
+            "id": "database-framework-cloudflare.install-dependencies",
+            "kind": "command",
+            "executable": "npm",
+            "arguments": ["install", "--ignore-scripts"],
+            "workingDirectory": "cloudflare",
+            "inputs": ["cloudflare/package.json", "cloudflare/package-lock.json"],
+            "outputs": ["cloudflare/node_modules/.package-lock.json"]
+          }
+        ],
+        "build": [
+          {
+            "id": "database-framework-cloudflare.build-runtime",
+            "kind": "command",
+            "executable": "sh",
+            "arguments": ["build.sh"],
+            "workingDirectory": "wasm",
+            "environment": {
+              "SWIFTWEB_SERVICE_APPLICATION": "1"
+            }
+          },
+          {
+            "id": "database-framework-cloudflare.generate-types",
+            "kind": "command",
+            "executable": "{{service.workspace}}/cloudflare/node_modules/.bin/wrangler",
+            "arguments": [
+              "types",
+              "src/worker-configuration.d.ts",
+              "--env-interface",
+              "CloudflareBindings",
+              "--include-runtime",
+              "false",
+              "--config",
+              "wrangler.jsonc"
+            ],
+            "workingDirectory": "cloudflare",
+            "dependsOn": ["database-framework-cloudflare.build-runtime"]
+          },
+          {
+            "id": "database-framework-cloudflare.typecheck",
+            "kind": "command",
+            "executable": "npm",
+            "arguments": ["run", "typecheck"],
+            "workingDirectory": "cloudflare",
+            "dependsOn": ["database-framework-cloudflare.generate-types"]
+          },
+          {
+            "id": "database-framework-cloudflare.validate-deployment",
+            "kind": "command",
+            "executable": "node",
+            "arguments": ["scripts/validate-worker-bundle-size.mjs", "3145728"],
+            "workingDirectory": "cloudflare",
+            "dependsOn": ["database-framework-cloudflare.typecheck"]
+          }
+        ],
+        "dev": [
+          {
+            "id": "database-framework-cloudflare.build-runtime-for-development",
+            "kind": "command",
+            "executable": "sh",
+            "arguments": ["build.sh"],
+            "workingDirectory": "wasm",
+            "environment": {
+              "SWIFTWEB_SERVICE_APPLICATION": "1"
+            }
+          },
+          {
+            "id": "database-framework-cloudflare.dev",
+            "kind": "command",
+            "lifetime": "persistent",
+            "executable": "npm",
+            "arguments": ["run", "dev"],
+            "workingDirectory": "cloudflare",
+            "dependsOn": ["database-framework-cloudflare.build-runtime-for-development"]
+          }
+        ],
+        "deploy": [
+          {
+            "id": "database-framework-cloudflare.deploy",
+            "kind": "command",
+            "executable": "npm",
+            "arguments": ["run", "deploy"],
+            "workingDirectory": "cloudflare"
+          }
+        ]
+      }
+    }
+  }
+}

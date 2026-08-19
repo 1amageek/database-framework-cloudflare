@@ -37,12 +37,12 @@
 
 ## Verification
 
-- Run the Native package tests with the pinned `org.swift.64202607231a`
+- Run the Native package tests with the pinned `org.swift.64202608141a`
   toolchain through `build-for-testing` and `test-without-building`. Inject the
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
   `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. The standard graph requires
-  exactly 18 passed tests. An isolated `MultipleBases` graph is selected with
-  `DATABASE_CLOUDFLARE_TEST_TRAITS=MultipleBases` and requires exactly 20 passed
+  exactly 18 passed tests. An isolated `MultiBase` graph is selected with
+  `DATABASE_CLOUDFLARE_TEST_TRAITS=MultiBase` and requires exactly 20 passed
   tests. `DATABASE_CLOUDFLARE_TEST_TRAITS=AllRuntimeFeatures` requires exactly
   21 passed tests, including the three VectorIndexes capability-admission
   contracts. The harness derives the expected count from the selected traits
@@ -51,8 +51,11 @@
   graphs.
 - Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 120
   passed TypeScript tests with zero failures, cancellations, skips, or todos.
+- Run `node scripts/verify-service-adapter.mjs` and require generated Wrangler
+  binding types, TypeScript checking, and the complete dry-run deployment-size
+  gate to pass from a rendered isolated service workspace.
 - Run `scripts/verify-runtime-feasibility.sh` with the fixed
-  `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-07-23-a_wasm-embedded` SDK. The gate
+  `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm-embedded` SDK. The gate
   must compile and link every selected runtime product, reject forbidden host
   adapters, verify the reactor ABI, enforce artifact and address-space limits,
   instantiate the reactor, and complete the workerd restart-persistence smoke

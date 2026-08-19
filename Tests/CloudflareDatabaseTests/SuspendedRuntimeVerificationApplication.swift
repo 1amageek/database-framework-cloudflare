@@ -4,8 +4,7 @@ import DatabaseTypes
 
 final class SuspendedRuntimeVerificationApplication:
     CloudflareDatabaseApplication,
-    Sendable
-{
+    Sendable {
     fileprivate actor Gate {
         private var wasEntered = false
         private var isReleased = false
@@ -103,7 +102,7 @@ final class SuspendedRuntimeVerificationApplication:
     }
 
     private let application: RuntimeVerificationApplication
-    private let definitionGate = Gate()
+    private let configurationGate = Gate()
     private let invocationGate = Gate()
     private let shutdownEvent = Event()
 
@@ -111,12 +110,12 @@ final class SuspendedRuntimeVerificationApplication:
         self.application = try RuntimeVerificationApplication()
     }
 
-    func waitUntilDefinitionIsRequested() async {
-        await definitionGate.waitUntilEntered()
+    func waitUntilConfigurationIsRequested() async {
+        await configurationGate.waitUntilEntered()
     }
 
-    func releaseDefinition() async {
-        await definitionGate.release()
+    func releaseConfiguration() async {
+        await configurationGate.release()
     }
 
     func waitUntilInvocationStarts() async {
@@ -131,14 +130,16 @@ final class SuspendedRuntimeVerificationApplication:
         await shutdownEvent.wait()
     }
 
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
-        await definitionGate.enterAndWait()
-        return try await application.makeDefinition()
+    var configuration: CloudflareDatabaseConfiguration {
+        get async throws {
+            await configurationGate.enterAndWait()
+            return try await application.configuration
+        }
     }
 
-    func makeSession(for container: DBContainer) async throws -> Session {
+    func makeSession(for database: DBContainer) async throws -> Session {
         Session(
-            wrapped: try await application.makeSession(for: container),
+            wrapped: try await application.makeSession(for: database),
             invocationGate: invocationGate,
             shutdownEvent: shutdownEvent
         )

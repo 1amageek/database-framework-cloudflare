@@ -180,7 +180,7 @@ into the framework. Declarations are split by represented behavior.
 | Ontology reasoning | Graph/ontology-selected `database-framework` product |
 | SHACL validation | Graph/SHACL-selected `database-framework` product |
 | Index status, rebuild slices, and migration execution primitives | `database-framework` maintenance APIs and selected index products |
-| Base and Composition execution semantics | `database-framework` under the non-default `MultipleBases` trait |
+| Base and Composition execution semantics | `database-framework` under the non-default `MultiBase` trait |
 | DatabaseWire frame decoding and response encoding | `database-server` |
 | Operation registry, remote handler selection, and remote error mapping | `database-server` |
 | Durable response snapshots and server job persistence | `database-server` |
@@ -193,7 +193,7 @@ DatabaseWire responses.
 
 Heavy feature implementations remain in separate SwiftPM targets. The default
 framework dependency selects no backend, graph runtime, vector implementation,
-full-text implementation, relationship runtime, or `MultipleBases` support.
+full-text implementation, relationship runtime, or `MultiBase` support.
 
 ## Application-Facing Cloudflare Contract
 
@@ -204,10 +204,10 @@ boundaries are the accepted contract for this migration.
 public protocol CloudflareDatabaseApplication: Sendable {
     associatedtype Session: CloudflareDatabaseSession
 
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition
+    var configuration: CloudflareDatabaseConfiguration { get async throws }
 
     func makeSession(
-        for container: DBContainer
+        for database: DBContainer
     ) async throws -> Session
 }
 
@@ -233,16 +233,21 @@ override the method directly. Type erasure uses the session protocol witness;
 it does not discover alarm support through runtime casting, so the same path
 is valid in Embedded Swift.
 
-`CloudflareDatabaseDefinition` contains the application-selected schema,
-migration plan, runtime configuration, security configuration, index runtime
-configuration, logging, and metrics. It does not contain a server operation
-registry or a DatabaseWire endpoint.
+`CloudflareDatabaseConfiguration` contains the application-selected schema,
+migration plan, runtime configuration, security configuration, logging, and
+metrics. Index execution policy is part of the runtime configuration rather
+than a second adapter-owned parameter. The configuration does not contain a
+server operation registry or a DatabaseWire endpoint.
 
 The Cloudflare adapter creates the platform StorageEngine and clocks, validates
 Cloudflare capabilities, opens `DBContainer`, and asks the application to make
-its session. If definition creation, capability validation, container opening,
-or session creation fails, the adapter completes authoritative storage cleanup
-before returning failure.
+its session. `makeSession(for:)` is the application-owned bootstrap boundary.
+When a migration plan is attached, the framework keeps ordinary data-operation
+admission closed until the application completes migration through the
+container's administrative API. The adapter does not choose an unbounded or
+bounded migration policy. If configuration creation, capability validation,
+container opening, application bootstrap, or session creation fails, the
+adapter completes authoritative storage cleanup before returning failure.
 
 The application session may retain `DBContainer` for database operations. The
 adapter runtime remains the authoritative shutdown owner and calls session
@@ -368,7 +373,7 @@ targets do not link server implementation targets or storage backends.
 - `database-framework-cloudflare` has no default runtime feature traits.
 - The application selects its exact framework features.
 - `AllRuntimeFeatures` remains an explicit convenience trait and does not
-  enable `MultipleBases`.
+  enable `MultiBase`.
 - `database-server` may select its distribution feature closure when building
   the standalone release artifact.
 - SwiftPM trait unification must not cause an adapter to select features on
@@ -397,8 +402,8 @@ migrates all callers and tests.
 
 ADR-0002 remains the Cloudflare vector capability decision. HNSW validation
 continues to occur before `DBContainer.open`; it is applied to
-`CloudflareDatabaseDefinition` rather than a server-owned container
-definition.
+`CloudflareDatabaseConfiguration` rather than a server-owned container
+configuration.
 
 ## Coordinated Release Order
 
@@ -442,7 +447,7 @@ Completion requires all of the following evidence:
    through the production invocation path.
 6. Embedded WASM compiles and links the application-selected feature closure
    using the pinned Swift toolchain and matching production SDK.
-7. Unselected graph, vector, full-text, relationship, and `MultipleBases`
+7. Unselected graph, vector, full-text, relationship, and `MultiBase`
    implementations are absent from the linked artifact.
 8. Standalone HTTP, WebSocket, stdio, authentication, durable job, schema
    administration, and process shutdown behavior remains covered in
@@ -492,32 +497,32 @@ runtime's fixed delayed-task hook slots in the C ABI shim. They are installed
 exactly once under `installationState` and do not represent application state.
 
 The strict verification harnesses encode the reviewed logical test counts
-below. Evidence was collected on 2026-08-18 with the pinned Swift snapshot and
-URL-resolved package graphs. A passed test row means the report contained the
-exact count with zero failures, skips, expected failures, runtime warnings, or
-internal tool errors. Every row required for this release is complete.
+below. Evidence was last updated on 2026-08-20 with the pinned Swift snapshot
+and URL-resolved package graphs. A passed test row means the report contained
+the exact count with zero failures, skips, expected failures, runtime warnings,
+or internal tool errors. Every row required for this release is complete.
 
 | Repository / suite | Selected traits | Expected tests | Current evidence |
 |---|---|---:|---|
 | `database-kit` | Standard | 641 | Passed 641/641 |
-| `database-kit` | `MultipleBases` | 656 | Passed 656/656 |
+| `database-kit` | `MultiBase` | 656 | Passed 656/656 |
 | `database-framework` SQLite | `SQLite,AllRuntimeFeatures` | 111 | Passed 111/111 |
-| `database-framework` SQLite | `SQLite,AllRuntimeFeatures,MultipleBases` | 114 | Passed 114/114 |
-| `database-framework` semantic suites | `DatabaseEngineTests,GraphIndexTests` | 603 | Passed 603/603 |
-| `database-framework` PostgreSQL | `PostgreSQL,AllRuntimeFeatures,MultipleBases` | 72 | Passed 72/72 against an isolated PostgreSQL instance with negative readiness after shutdown |
-| `database-framework` FoundationDB | `FoundationDB,AllRuntimeFeatures,MultipleBases` | 3,651 | Passed 3,651/3,651 against an isolated FoundationDB 7.3 cluster with negative readiness after shutdown |
+| `database-framework` SQLite | `SQLite,AllRuntimeFeatures,MultiBase` | 114 | Passed 114/114 |
+| `database-framework` semantic suites | `DatabaseEngineTests,GraphIndexTests` | 627 | Passed 627/627 |
+| `database-framework` PostgreSQL | `PostgreSQL,AllRuntimeFeatures,MultiBase` | 72 | Passed 72/72 against an isolated PostgreSQL instance with negative readiness after shutdown |
+| `database-framework` FoundationDB | `FoundationDB,AllRuntimeFeatures,MultiBase` | 3,651 | Passed 3,651/3,651 against an isolated FoundationDB 7.3 cluster with negative readiness after shutdown |
 | `database-server` | Standard | 279 | Passed 279/279 |
-| `database-server` | `MultipleBases` | 305 | Passed 305/305 |
+| `database-server` | `MultiBase` | 305 | Passed 305/305 |
 | `database-server` storage integration | SQLite, PostgreSQL, FoundationDB release artifact | — | Passed all three backends and negative readiness |
 | `database` CLI | Standard | 45 | Passed 45/45 |
-| `database` CLI | `MultipleBases` | 59 | Passed 59/59 |
+| `database` CLI | `MultiBase` | 59 | Passed 59/59 |
 | `database` CLI process and FDB integration | Version-matched executable set | — | Passed process lifecycle, link separation, and FDB 7.3 integration |
 | `database-framework-cloudflare` Native | Standard | 18 | Passed 18/18 |
-| `database-framework-cloudflare` Native | `MultipleBases` | 20 | Passed 20/20 |
+| `database-framework-cloudflare` Native | `MultiBase` | 20 | Passed 20/20 |
 | `database-framework-cloudflare` Native | `AllRuntimeFeatures` | 21 | Passed 21/21 |
-| Cloudflare Worker dependency distribution | Versioned StorageKit host and Cloudflare runtime packages | — | Passed; the 39-entry, 24,428-byte `26.818.0` archive has SHA-256 `10af9694ae5444319b8769c1006d17ce0a8c4d054c739cec14fd9dc225687685`, a clean external consumer resolved the immutable StorageKit `26.817.0` release dependency, and Wrangler 4.123.0 bundled all public subpaths successfully |
+| Cloudflare Worker dependency distribution | Versioned StorageKit host and Cloudflare runtime packages | — | Passed; the 39-entry, 24,430-byte `26.819.0` archive has SHA-256 `07792d8d0ab4a8c3ff0f4a8fc4d57407b990781814df4dd7fb937b79553094b8`, a clean external consumer resolved the immutable StorageKit `26.817.0` release dependency, and Wrangler 4.123.0 bundled all public subpaths successfully |
 | Cloudflare Worker TypeScript | Adapter test graph | 120 | Passed 120/120; production dependency audit reported zero vulnerabilities |
-| Cloudflare Embedded WASM / workerd | `AllRuntimeFeatures` application reactor | — | Passed ABI v3, typed DBContainer write/read, Flat/IVF/PQ vector lifecycle, alarm delivery, workerd Durable Object RPC, and SQLite persistence after restart; 5,213,852 bytes raw, 1,849,720 bytes gzip, 64 MiB address space, and 30.500 ms startup |
+| Cloudflare Embedded WASM / workerd | `AllRuntimeFeatures` and `AllRuntimeFeatures,MultiBase` application reactors | — | Passed ABI v3, typed DBContainer write/read, Flat/IVF/PQ vector lifecycle, alarm delivery, workerd Durable Object RPC, and SQLite persistence after restart. Standard: 5,320,636 bytes raw, 1,899,301 bytes gzip, 64 MiB address space, and 30.804 ms startup. MultiBase: 5,551,157 bytes raw, 1,972,561 bytes gzip, 64 MiB address space, and 35.076 ms startup. |
 
 Trait selection is part of the evidence. The package-owned harnesses create an
 isolated source copy when a non-default trait graph is required, modify only

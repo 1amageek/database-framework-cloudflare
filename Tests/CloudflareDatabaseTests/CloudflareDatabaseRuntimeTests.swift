@@ -209,10 +209,11 @@ struct CloudflareDatabaseRuntimeTests {
         await preOpenRuntime.start(callID: 53)
         #expect(preOpenCompletion.completion(callID: 53)?.status == .startupFailed)
         #expect(
-            preOpenProbe.shutdownState == .init(
-                wasRequested: true,
-                didComplete: true
-            )
+            preOpenProbe.shutdownState
+                == .init(
+                    wasRequested: true,
+                    didComplete: true
+                )
         )
 
         let postOpenProbe = ShutdownRecordingStorageEngine.Probe()
@@ -240,10 +241,11 @@ struct CloudflareDatabaseRuntimeTests {
         await postOpenRuntime.start(callID: 54)
         #expect(postOpenCompletion.completion(callID: 54)?.status == .startupFailed)
         #expect(
-            postOpenProbe.shutdownState == .init(
-                wasRequested: true,
-                didComplete: true
-            )
+            postOpenProbe.shutdownState
+                == .init(
+                    wasRequested: true,
+                    didComplete: true
+                )
         )
     }
 
@@ -269,13 +271,13 @@ struct CloudflareDatabaseRuntimeTests {
         )
 
         channel.start(callID: 60)
-        await application.waitUntilDefinitionIsRequested()
+        await application.waitUntilConfigurationIsRequested()
         channel.invoke(
             callID: 61,
             contextBytes: bytes("runtime-verification"),
             requestBytes: bytes("echo:queued-after-start")
         )
-        await application.releaseDefinition()
+        await application.releaseConfiguration()
 
         #expect(
             try await completion.waitForCompletion(callID: 60).status

@@ -1,13 +1,12 @@
 #if CLOUDFLARE_TEST_VECTOR_INDEXES
 import DatabaseEngine
+import DatabaseKit
 import DatabaseTypes
 
 struct CustomHNSWRuntimeConfiguration: IndexRuntimeConfiguration {
-    static let kindIdentifier = "vector"
+    static let indexType: IndexType = .vector
 
-    let fieldName = "embedding"
-    let entityName = "CloudflareHNSWRejectionDocument"
-    let subspaceKey: String? = nil
+    let indexName = "CloudflareHNSWRejectionDocument_embedding"
 
     var executionOptions: FieldObject {
         get throws {

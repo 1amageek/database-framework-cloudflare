@@ -24,9 +24,10 @@ public actor CloudflareDatabaseRuntime {
     private let wallClock: any WallClock
     private let completion: CloudflareDatabaseCompletionChannel
     private let limits: CloudflareDatabaseRuntimeLimits
-    private let createStorageEngine: @Sendable (
-        CloudflareDurableObjectStorageConfiguration
-    ) async throws -> any StorageEngine
+    private let createStorageEngine:
+        @Sendable (
+            CloudflareDurableObjectStorageConfiguration
+        ) async throws -> any StorageEngine
 
     private var container: DBContainer?
     private var session: AnyCloudflareDatabaseSession?
@@ -75,13 +76,14 @@ public actor CloudflareDatabaseRuntime {
         wallClock: any WallClock,
         completion: CloudflareDatabaseCompletionChannel,
         limits: CloudflareDatabaseRuntimeLimits = .default,
-        createStorageEngine: @escaping @Sendable (
-            CloudflareDurableObjectStorageConfiguration
-        ) async throws -> any StorageEngine = { configuration in
-            try await CloudflareDurableObjectStorageEngine(
-                configuration: configuration
-            )
-        }
+        createStorageEngine:
+            @escaping @Sendable (
+                CloudflareDurableObjectStorageConfiguration
+            ) async throws -> any StorageEngine = { configuration in
+                try await CloudflareDurableObjectStorageEngine(
+                    configuration: configuration
+                )
+            }
     ) {
         self.application = application
         self.storageClient = CloudflareDurableObjectStorageClientComposition(
@@ -131,39 +133,39 @@ public actor CloudflareDatabaseRuntime {
 
         isStarting = true
         do {
-            let definition = try await application.makeDefinition()
-            try definition.validateHostingCapabilities()
+            let configuration = try await application.configuration
+            try configuration.validateHostingCapabilities()
             let storageEngine = try await createStorageEngine(
                 CloudflareDurableObjectStorageConfiguration(
-                    partitionIdentity: definition.partitionIdentity,
+                    partitionIdentity: configuration.partitionIdentity,
                     client: storageClient,
-                    limits: definition.storageLimits,
+                    limits: configuration.storageLimits,
                     monotonicClock: monotonicClock
                 )
             )
 
             let openedContainer: DBContainer
-            #if CLOUDFLARE_DATABASE_MULTIPLE_BASES
+            #if CLOUDFLARE_DATABASE_MULTI_BASE
             let storageTopology: DatabaseStorageTopology
             do {
                 storageTopology = try DatabaseStorageTopology(
-                    controlDomainID: definition.storageLayout.domainID,
+                    controlDomainID: configuration.storageLayout.domainID,
                     domains: [
                         try DatabaseStorageDomain(
-                            id: definition.storageLayout.domainID,
-                            namespacePath: definition.storageLayout
+                            id: configuration.storageLayout.domainID,
+                            namespacePath: configuration.storageLayout
                                 .domainNamespacePath,
                             storageEngine: storageEngine
                         )
                     ],
                     placements: [
                         try DatabaseStoragePlacement(
-                            id: definition.storageLayout.placementID,
-                            domainID: definition.storageLayout.domainID,
-                            path: definition.storageLayout.baseNamespacePath
+                            id: configuration.storageLayout.placementID,
+                            domainID: configuration.storageLayout.domainID,
+                            path: configuration.storageLayout.baseNamespacePath
                         )
                     ],
-                    defaultPlacementID: definition.storageLayout.placementID
+                    defaultPlacementID: configuration.storageLayout.placementID
                 )
             } catch {
                 // Topology construction has not transferred engine ownership.
@@ -171,13 +173,13 @@ public actor CloudflareDatabaseRuntime {
                 await storageEngine.waitUntilShutdown()
                 throw error
             }
-            openedContainer = try await definition.open(
+            openedContainer = try await configuration.open(
                 storageTopology: storageTopology,
                 monotonicClock: monotonicClock,
                 wallClock: wallClock
             )
             #else
-            openedContainer = try await definition.open(
+            openedContainer = try await configuration.open(
                 storageEngine: storageEngine,
                 databaseRoot: Subspace(),
                 monotonicClock: monotonicClock,

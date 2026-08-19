@@ -6,11 +6,11 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     static let principalIdentifier = "runtime-verification"
 
     private let container: DBContainer
-    #if CLOUDFLARE_TEST_MULTIPLE_BASES
+    #if CLOUDFLARE_TEST_MULTI_BASE
     private let baseID: Base.ID
     #endif
 
-    #if CLOUDFLARE_TEST_MULTIPLE_BASES
+    #if CLOUDFLARE_TEST_MULTI_BASE
     init(container: DBContainer, baseID: Base.ID) {
         self.container = container
         self.baseID = baseID
@@ -24,8 +24,10 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     func respond(
         to invocation: CloudflareDatabaseInvocation
     ) async throws -> ByteString {
-        guard Self.string(from: invocation.context)
-                == Self.principalIdentifier else {
+        guard
+            Self.string(from: invocation.context)
+                == Self.principalIdentifier
+        else {
             throw RuntimeVerificationError.unauthorizedContext
         }
         let request = Self.string(from: invocation.request)
@@ -36,7 +38,7 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             )
         )
         let context: DatabaseContext
-        #if CLOUDFLARE_TEST_MULTIPLE_BASES
+        #if CLOUDFLARE_TEST_MULTI_BASE
         context = container.session(authorization: authorization)
             .base(baseID)
             .newContext()
@@ -56,7 +58,8 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             return ByteString(Array(title.utf8))
         }
         if request == "get" {
-            let document = try await context
+            let document =
+                try await context
                 .fetch(RuntimeVerificationDocument.self)
                 .where(RuntimeVerificationDocument.fields.id == "document-1")
                 .first()

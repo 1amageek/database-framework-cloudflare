@@ -14,9 +14,12 @@ struct RuntimeVerificationVectorDocument {
     var embedding: Vector
 
     #Index(
-        .vector(dimensions: 2, metric: .dotProduct),
-        embedding: \RuntimeVerificationVectorDocument.embedding,
-        name: "RuntimeVerificationVectorDocument_embedding"
+        .vector(
+            name: "RuntimeVerificationVectorDocument_embedding",
+            embedding: \RuntimeVerificationVectorDocument.embedding,
+            dimensions: 2,
+            metric: .dotProduct
+        )
     )
 }
 
@@ -32,9 +35,12 @@ struct RuntimeVerificationIVFDocument {
     var embedding: Vector
 
     #Index(
-        .vector(dimensions: 2, metric: .dotProduct),
-        embedding: \RuntimeVerificationIVFDocument.embedding,
-        name: "RuntimeVerificationIVFDocument_embedding"
+        .vector(
+            name: "RuntimeVerificationIVFDocument_embedding",
+            embedding: \RuntimeVerificationIVFDocument.embedding,
+            dimensions: 2,
+            metric: .dotProduct
+        )
     )
 }
 
@@ -52,9 +58,12 @@ struct RuntimeVerificationPQDocument {
     var embedding: Vector
 
     #Index(
-        .vector(dimensions: 2, metric: .dotProduct),
-        embedding: \RuntimeVerificationPQDocument.embedding,
-        name: "RuntimeVerificationPQDocument_embedding"
+        .vector(
+            name: "RuntimeVerificationPQDocument_embedding",
+            embedding: \RuntimeVerificationPQDocument.embedding,
+            dimensions: 2,
+            metric: .dotProduct
+        )
     )
 }
 
@@ -72,9 +81,12 @@ struct RuntimeVerificationFlatDocument {
     var embedding: Vector
 
     #Index(
-        .vector(dimensions: 2, metric: .dotProduct),
-        embedding: \RuntimeVerificationFlatDocument.embedding,
-        name: "RuntimeVerificationFlatDocument_embedding"
+        .vector(
+            name: "RuntimeVerificationFlatDocument_embedding",
+            embedding: \RuntimeVerificationFlatDocument.embedding,
+            dimensions: 2,
+            metric: .dotProduct
+        )
     )
 }
 

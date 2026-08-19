@@ -20,8 +20,8 @@ if (artifactPath === undefined) {
   );
 }
 const verifiedArtifactPath = artifactPath;
-const includesMultipleBases = readRequiredFeatureFlag(
-  "DATABASE_RUNTIME_MULTIPLE_BASES"
+const includesMultiBase = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_MULTI_BASE"
 );
 const includesGraphIndexes = readRequiredFeatureFlag(
   "DATABASE_RUNTIME_GRAPH_INDEXES"
@@ -127,7 +127,7 @@ async function verifyRuntime(): Promise<void> {
   console.log(JSON.stringify({
     artifactPath: verifiedArtifactPath,
     addressSpaceBytes,
-    multipleBases: includesMultipleBases,
+    multiBase: includesMultiBase,
     graphIndexes: includesGraphIndexes,
     vectorIndexes: includesVectorIndexes,
     writeResponseBytes: writeResponse.byteLength,

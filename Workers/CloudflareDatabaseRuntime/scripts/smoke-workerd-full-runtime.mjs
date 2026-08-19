@@ -5,8 +5,8 @@ import { copyFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
-const includesMultipleBases = readRequiredFeatureFlag(
-  "DATABASE_RUNTIME_MULTIPLE_BASES"
+const includesMultiBase = readRequiredFeatureFlag(
+  "DATABASE_RUNTIME_MULTI_BASE"
 );
 const includesGraphIndexes = readRequiredFeatureFlag(
   "DATABASE_RUNTIME_GRAPH_INDEXES"
@@ -77,7 +77,7 @@ try {
     runtimeArtifactPath,
     workerdDurableObjectRPC: true,
     sqlitePersistenceAfterRestart: true,
-    multipleBases: includesMultipleBases,
+    multiBase: includesMultiBase,
     graphIndexes: includesGraphIndexes,
     vectorIndexes: includesVectorIndexes,
     vectorLifecycle: includesVectorIndexes,

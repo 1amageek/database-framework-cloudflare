@@ -10,16 +10,18 @@ struct StartupFailureApplication: CloudflareDatabaseApplication, Sendable {
         self.rejectsSessionCreation = rejectsSessionCreation
     }
 
-    func makeDefinition() async throws -> CloudflareDatabaseDefinition {
-        try await application.makeDefinition()
+    var configuration: CloudflareDatabaseConfiguration {
+        get async throws {
+            try await application.configuration
+        }
     }
 
     func makeSession(
-        for container: DBContainer
+        for database: DBContainer
     ) async throws -> RuntimeVerificationSession {
         guard !rejectsSessionCreation else {
             throw RuntimeVerificationError.simulatedSessionCreationFailure
         }
-        return try await application.makeSession(for: container)
+        return try await application.makeSession(for: database)
     }
 }

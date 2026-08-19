@@ -166,8 +166,10 @@ aggregate memory limit.
 1. The Durable Object migrates its SQLite host schema and instantiates the
    reactor inside constructor-time `blockConcurrencyWhile`.
 2. `database_start` completes only after the single Cloudflare storage topology,
-   container, and full operation runtime are ready. With `MultipleBases`, Base
-   creation and Base-local schema migration remain explicit persistent
+   container, and application-owned session bootstrap are ready. Attaching a
+   migration plan closes ordinary data-operation admission until the
+   application completes its chosen migration workflow. With `MultiBase`,
+   Base creation and Base-local schema migration remain explicit application
    operations.
 3. Database invocations and alarms enter one explicit FIFO queue. The Swift
    runtime also serializes both entry types as a defense-in-depth invariant.
@@ -190,7 +192,7 @@ The release gate executes the same optimized reactor in Node and workerd. The
 workerd path must cross Worker routing, Durable Object RPC, the FIFO runtime
 owner, the authenticated ABI, the synchronous StorageKit host ABI, and Durable
 Object SQLite. The standard fixture executes against the database data root;
-the `MultipleBases` fixture first creates and provisions a Base and executes
+the `MultiBase` fixture first creates and provisions a Base and executes
 against that Base. Both fixtures issue a DatabaseWire mutation for an OWL-class
 entity and verify the generated RDF projection through a SPARQL ASK request.
 After restarting workerd with the same persisted state, both the document query

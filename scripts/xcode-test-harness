@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCHEME="database-framework-cloudflare-Package"
 DESTINATION="platform=macOS,arch=arm64"
 TEST_TRAITS="${DATABASE_CLOUDFLARE_TEST_TRAITS:-}"
-TOOLCHAIN_IDENTIFIER="org.swift.64202607231a"
+TOOLCHAIN_IDENTIFIER="org.swift.64202608141a"
+XCODE_TOOLCHAIN_IDENTIFIER="com.apple.dt.toolchain.XcodeDefault"
 BUILD_TIMEOUT_SECONDS="${XCODE_TEST_BUILD_TIMEOUT_SECONDS:-1200}"
 TEST_TIMEOUT_SECONDS="${XCODE_TEST_TIMEOUT_SECONDS:-1200}"
 RESULT_DIRECTORY="${XCODE_TEST_RESULT_DIRECTORY:-${TMPDIR:-/tmp}/database-framework-cloudflare-xcode-results}"
@@ -21,7 +22,7 @@ trait_is_enabled() {
       return 0
       ;;
   esac
-  if [[ "$requested_trait" != "MultipleBases" ]]; then
+  if [[ "$requested_trait" != "MultiBase" ]]; then
     case ",$TEST_TRAITS," in
       *",AllRuntimeFeatures,"*)
         return 0
@@ -152,9 +153,9 @@ if [[ -n "$TEST_TRAITS" ]]; then
     case "$trait" in
       AllRuntimeFeatures | ScalarIndexes | VectorIndexes | \
         FullTextIndexes | SpatialIndexes | RankIndexes | \
-        BitmapIndexes | VersionIndexes | PermutedIndexes | \
+        BitmapIndexes | VersionIndexes | \
         GraphIndexes | AggregationIndexes | LeaderboardIndexes | \
-        Relationships | MultipleBases)
+        Relationships | MultiBase)
         ;;
       *)
         echo "error: unknown Cloudflare test trait: $trait" >&2
@@ -165,7 +166,7 @@ if [[ -n "$TEST_TRAITS" ]]; then
 fi
 
 default_expected_test_count=18
-if trait_is_enabled MultipleBases; then
+if trait_is_enabled MultiBase; then
   default_expected_test_count=$((default_expected_test_count + 2))
 fi
 if trait_is_enabled VectorIndexes; then
@@ -173,7 +174,7 @@ if trait_is_enabled VectorIndexes; then
 fi
 EXPECTED_TEST_COUNT="${DATABASE_CLOUDFLARE_EXPECTED_TEST_COUNT:-$default_expected_test_count}"
 
-for command in jq xcodebuild xcrun plutil perl rg rsync tee; do
+for command in cmp jq xcodebuild xcrun plutil perl rg rsync tee; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "error: required command not found: $command" >&2
     exit 1
@@ -185,7 +186,7 @@ if ! [[ "$EXPECTED_TEST_COUNT" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-export TOOLCHAINS="$TOOLCHAIN_IDENTIFIER"
+PINNED_SWIFTC="$(xcrun --toolchain "$TOOLCHAIN_IDENTIFIER" --find swiftc)"
 xcrun --toolchain "$TOOLCHAIN_IDENTIFIER" swift --version
 xcodebuild -version
 
@@ -231,16 +232,16 @@ if [[ -n "$TEST_TRAITS" ]]; then
     die "package declaration was not found\n" unless $insertions == 1;
   ' "$source_root/Package.swift"
 fi
-if trait_is_enabled MultipleBases; then
+if trait_is_enabled MultiBase; then
   perl -0pi -e '
     my $replacements = s{
       \.trait\(
-        \s*name:\s*"MultipleBases",
-        \s*condition:\s*\.when\(traits:\s*\["MultipleBases"\]\)
+        \s*name:\s*"MultiBase",
+        \s*condition:\s*\.when\(traits:\s*\["MultiBase"\]\)
         \s*
       \)
-    }{.trait(name: "MultipleBases")}gx;
-    die "expected two MultipleBases dependency trait conditions\n"
+    }{.trait(name: "MultiBase")}gx;
+    die "expected two MultiBase dependency trait conditions\n"
       unless $replacements == 2;
   ' "$source_root/Package.swift"
 fi
@@ -262,6 +263,7 @@ if rg -n '\.package\(path:' "$source_root/Package.swift" >/dev/null; then
   exit 2
 fi
 run_identifier="$(date -u +%Y%m%d-%H%M%S)-$$"
+resolve_log="$RESULT_DIRECTORY/Resolve-$run_identifier.log"
 build_result="$RESULT_DIRECTORY/Build-$run_identifier.xcresult"
 test_result="$RESULT_DIRECTORY/Test-$run_identifier.xcresult"
 build_log="$RESULT_DIRECTORY/Build-$run_identifier.log"
@@ -270,7 +272,34 @@ test_log="$RESULT_DIRECTORY/Test-$run_identifier.log"
 set +e
 (
   cd "$source_root"
-  timeout_command "$BUILD_TIMEOUT_SECONDS" xcodebuild build-for-testing \
+  timeout_command "$BUILD_TIMEOUT_SECONDS" env \
+    TOOLCHAINS="$XCODE_TOOLCHAIN_IDENTIFIER" \
+    xcodebuild -resolvePackageDependencies \
+    -scheme "$SCHEME" \
+    -derivedDataPath "$derived_data" \
+    -onlyUsePackageVersionsFromResolvedFile \
+    SWIFT_EXEC="$PINNED_SWIFTC" \
+    2>&1 | tee "$resolve_log"
+)
+resolve_status=$?
+set -e
+reject_internal_tool_errors "$resolve_log"
+if (( resolve_status != 0 )); then
+  echo "error: dependency resolution exited with status $resolve_status" >&2
+  exit "$resolve_status"
+fi
+if [[ -f "$ROOT_DIR/Package.resolved" ]] \
+    && ! cmp -s "$ROOT_DIR/Package.resolved" "$source_root/Package.resolved"; then
+  echo "error: dependency resolution changed the pinned package graph" >&2
+  exit 1
+fi
+
+set +e
+(
+  cd "$source_root"
+  timeout_command "$BUILD_TIMEOUT_SECONDS" env \
+    TOOLCHAINS="$XCODE_TOOLCHAIN_IDENTIFIER" \
+    xcodebuild build-for-testing \
     -scheme "$SCHEME" \
     -destination "$DESTINATION" \
     -derivedDataPath "$derived_data" \
@@ -278,11 +307,16 @@ set +e
     -enableCodeCoverage NO \
     -onlyUsePackageVersionsFromResolvedFile \
     -skipPackageUpdates \
+    SWIFT_EXEC="$PINNED_SWIFTC" \
     2>&1 | tee "$build_log"
 )
 build_status=$?
 set -e
 reject_internal_tool_errors "$build_log"
+if ! rg -F "SWIFT_EXEC = $PINNED_SWIFTC" "$build_log" >/dev/null; then
+  echo "error: Xcode did not record the pinned Swift compiler" >&2
+  exit 1
+fi
 if (( build_status != 0 )); then
   echo "error: build-for-testing exited with status $build_status" >&2
   exit "$build_status"
@@ -302,7 +336,9 @@ cp "$xctestrun_paths" "$configured_xctestrun"
 inject_testing_runtime "$configured_xctestrun"
 
 set +e
-timeout_command "$TEST_TIMEOUT_SECONDS" xcodebuild test-without-building \
+timeout_command "$TEST_TIMEOUT_SECONDS" env \
+  TOOLCHAINS="$XCODE_TOOLCHAIN_IDENTIFIER" \
+  xcodebuild test-without-building \
   -xctestrun "$configured_xctestrun" \
   -destination "$DESTINATION" \
   -resultBundlePath "$test_result" \
