@@ -186,6 +186,7 @@ The build selects the exact Binaryen `131.0.0` npm package when invoking
 | `cloudflare.className` | Exported Durable Object class |
 | `cloudflare.bindingName` | Database Worker's own Durable Object namespace binding |
 | `cloudflare.databaseID` | Application database identity exposed to the Worker |
+| `cloudflare.maximumCompressedWorkerBytes` | Deployment plan's compressed Worker upload limit; defaults to the Free-plan 3 MiB limit |
 | `cloudflare.objectName` | Named Durable Object workspace selected by the application |
 
 `sweb dev` builds the database reactor before it starts the database Worker and
@@ -193,10 +194,12 @@ page Worker as separate persistent processes. This matches Wrangler's local
 model for an external Durable Object; the page binding still uses the
 application's `script_name` configuration. The service reactor uses the same
 `-Osize` and whole-module optimization contract as the package feasibility gate
-and applies the pinned Binaryen optimizer. The 3 MiB deployment gate is
-evaluated only after Wrangler bundles the complete Worker, including
-JavaScript, WebAssembly, and every uploaded module. A compressed WASM
-measurement is diagnostic data and is not accepted as deployment-size evidence.
+and applies the pinned Binaryen optimizer. The deployment gate defaults to the
+Free-plan 3 MiB limit; deployments that explicitly require another plan set
+`cloudflare.maximumCompressedWorkerBytes` to that plan's limit. The gate is
+evaluated only after Wrangler bundles the complete Worker, including JavaScript,
+WebAssembly, and every uploaded module. A compressed WASM measurement is
+diagnostic data and is not accepted as deployment-size evidence.
 
 `CloudflareDatabaseInvocation.context` and `.request` are bounded immutable
 bytes. The adapter never assigns authentication or wire semantics to either

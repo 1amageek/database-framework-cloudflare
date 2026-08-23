@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev --config wrangler.jsonc",
     "deploy": "wrangler deploy --config wrangler.jsonc",
-    "deploy:check": "node scripts/validate-worker-bundle-size.mjs 3145728",
+    "deploy:check": "node scripts/validate-worker-bundle-size.mjs {{service.cloudflare.maximumCompressedWorkerBytes}}",
     "types:generate": "wrangler types src/worker-configuration.d.ts --env-interface CloudflareBindings --include-runtime false --config wrangler.jsonc",
     "types:check": "wrangler types src/worker-configuration.d.ts --env-interface CloudflareBindings --include-runtime false --check --config wrangler.jsonc",
     "typecheck": "npm run types:check && tsc --noEmit"

@@ -27,6 +27,7 @@
         "cloudflare.className": "CloudflareDatabaseObject",
         "cloudflare.compatibilityDate": "2026-08-19",
         "cloudflare.databaseID": "application",
+        "cloudflare.maximumCompressedWorkerBytes": "3145728",
         "cloudflare.objectName": "default",
         "cloudflare.workerName": "cloudflare-database",
         "swiftSDK": "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm-embedded",
@@ -85,7 +86,10 @@
             "id": "database-framework-cloudflare.validate-deployment",
             "kind": "command",
             "executable": "node",
-            "arguments": ["scripts/validate-worker-bundle-size.mjs", "3145728"],
+            "arguments": [
+              "scripts/validate-worker-bundle-size.mjs",
+              "{{service.cloudflare.maximumCompressedWorkerBytes}}"
+            ],
             "workingDirectory": "cloudflare",
             "dependsOn": ["database-framework-cloudflare.typecheck"]
           }

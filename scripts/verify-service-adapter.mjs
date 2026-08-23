@@ -105,6 +105,7 @@ function substitution(key) {
     "service.cloudflare.className": "CloudflareDatabaseObject",
     "service.cloudflare.compatibilityDate": "2026-08-19",
     "service.cloudflare.databaseID": "adapter-verification",
+    "service.cloudflare.maximumCompressedWorkerBytes": "3145728",
     "service.cloudflare.objectName": "default",
     "service.cloudflare.workerName": "adapter-verification-database",
   };
