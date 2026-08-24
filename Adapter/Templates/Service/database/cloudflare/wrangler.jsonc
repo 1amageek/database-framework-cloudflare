@@ -12,8 +12,7 @@
     }
   ],
   "vars": {
-    "DATABASE_ID": "{{service.cloudflare.databaseID}}",
-    "DATABASE_OBJECT_NAME": "{{service.cloudflare.objectName}}"
+    "DATABASE_ID": "{{service.cloudflare.databaseID}}"
   },
   "durable_objects": {
     "bindings": [

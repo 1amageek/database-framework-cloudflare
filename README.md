@@ -134,7 +134,6 @@ its `sweb` adapter discoverable. The database runs as an independent service:
         "cloudflare.bindingName": "DATABASE",
         "cloudflare.className": "CalendarDatabaseObject",
         "cloudflare.databaseID": "calendar",
-        "cloudflare.objectName": "production",
         "cloudflare.workerName": "calendar-database"
       }
     }
@@ -165,6 +164,13 @@ default-initializable. Application overlays may replace the generic Worker
 surface with administration, import, or protocol-specific routing while the
 adapter continues to own the runtime host and lifecycle commands.
 
+The service adapter does not choose a named Durable Object. A consuming actor
+route supplies its logical identity when it calls `getByName(identity)`; for a
+SwiftWeb application that identity comes from `.actor(_:identity:)`. An
+application-specific administration endpoint must likewise route from the
+authenticated request's explicit actor identity instead of a second Wrangler
+variable.
+
 Wrangler binding types are generated inside the isolated service workspace
 after materialization and before TypeScript checking. They are build artifacts,
 not application overlay inputs; an application therefore excludes a checked-in
@@ -187,7 +193,6 @@ The build selects the exact Binaryen `131.0.0` npm package when invoking
 | `cloudflare.bindingName` | Database Worker's own Durable Object namespace binding |
 | `cloudflare.databaseID` | Application database identity exposed to the Worker |
 | `cloudflare.maximumCompressedWorkerBytes` | Deployment plan's compressed Worker upload limit; defaults to the Free-plan 3 MiB limit |
-| `cloudflare.objectName` | Named Durable Object workspace selected by the application |
 
 `sweb dev` builds the database reactor before it starts the database Worker and
 page Worker as separate persistent processes. This matches Wrangler's local

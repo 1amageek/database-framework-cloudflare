@@ -38,7 +38,11 @@ try {
     Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
   );
 
-  run("npm", ["install", "--ignore-scripts"], join(serviceRoot, "cloudflare"));
+  run(
+    "npm",
+    ["install", "--ignore-scripts", "--install-links"],
+    join(serviceRoot, "cloudflare"),
+  );
   run("npm", ["run", "types:generate"], join(serviceRoot, "cloudflare"));
   run("npm", ["run", "typecheck"], join(serviceRoot, "cloudflare"));
   run("npm", ["run", "deploy:check"], join(serviceRoot, "cloudflare"));
@@ -106,7 +110,6 @@ function substitution(key) {
     "service.cloudflare.compatibilityDate": "2026-08-19",
     "service.cloudflare.databaseID": "adapter-verification",
     "service.cloudflare.maximumCompressedWorkerBytes": "3145728",
-    "service.cloudflare.objectName": "default",
     "service.cloudflare.workerName": "adapter-verification-database",
   };
   const value = values[key];

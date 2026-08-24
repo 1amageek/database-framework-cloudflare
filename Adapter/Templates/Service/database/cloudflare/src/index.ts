@@ -19,7 +19,6 @@ export default {
     return Response.json({
       service: environment.DATABASE_ID,
       status: "ok",
-      object: environment.DATABASE_OBJECT_NAME,
     });
   },
 } satisfies ExportedHandler<DatabaseEnvironment>;
