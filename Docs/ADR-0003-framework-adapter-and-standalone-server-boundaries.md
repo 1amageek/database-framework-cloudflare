@@ -2,10 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-16
-- Supersedes: [ADR-0001](ADR-0001-full-runtime-reactor-abi.md)
-- Implementation status: Ownership migration, coordinated dependency releases,
-  native and Embedded WASM behavior, workerd persistence, and versioned Worker
-  distribution verified for release `26.0818.0`
+- Supersedes: the reactor ABI v2 design retained in Git history
 
 ## Context
 
@@ -41,11 +38,6 @@ remote operation dispatch, DatabaseWire framing, durable server jobs, and
 server administration behavior. The framework must remain lightweight, with
 optional feature implementations entering the graph only when the application
 selects them.
-
-Future packages such as `database-framework-cloudrun` and
-`database-framework-lambda` will have the same architectural position as the
-Cloudflare adapter. They are peers, not server variants and not dependencies of
-one another.
 
 ## Decision
 
@@ -107,9 +99,9 @@ are translated at the internal boundary into `SchemaFingerprintError`,
 `CanonicalReadError`, `QueryCursorError`, or
 `DatabaseIntermediateFootprintError`. `ExecutionBudget` and
 `SchemaFingerprint` themselves are semantic `DatabaseKit` values. The adapter
-does not decode DatabaseWire or make it part of ABI v3. References to ABI v2
-and the former `DatabaseServerRuntime` dependency in ADR-0001 are retained only
-as a superseded historical decision.
+does not decode DatabaseWire or make it part of ABI v3. The superseded ABI v2
+and `DatabaseServerRuntime` dependency remain available in Git history rather
+than in the current documentation set.
 
 ## Target Dependency Direction
 
@@ -125,8 +117,6 @@ flowchart TB
     Client["database-client"]
     CLI["database CLI"]
     Cloudflare["database-framework-cloudflare<br/>Durable Object and WASM adapter"]
-    CloudRun["database-framework-cloudrun<br/>future adapter"]
-    Lambda["database-framework-lambda<br/>future adapter"]
     Application["application-specific database"]
 
     Kit --> Types
@@ -146,9 +136,6 @@ flowchart TB
     Cloudflare --> Kit
     Cloudflare --> Types
     Cloudflare --> Storage
-    CloudRun --> Framework
-    Lambda --> Framework
-
     Application --> Framework
     Application --> Cloudflare
 ```

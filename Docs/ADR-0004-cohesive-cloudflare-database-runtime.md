@@ -85,9 +85,11 @@ flowchart LR
 
 The service adapter owns the reusable database launcher, Embedded WASM build,
 generic Durable Object host, and `prepare` / `build` / `dev` / `deploy`
-operations. The application owns its `CloudflareDatabaseApplication`, selected
-framework traits, Worker identity, object identity, binding contract, and any
-administration or import endpoint supplied as an overlay.
+operations. The service application owns its `CloudflareDatabaseApplication`,
+selected framework traits, Worker identity, binding contract, and any
+administration or import endpoint supplied as an overlay. When a SwiftWeb
+consumer addresses the service through a concrete Actor contract, that
+consumer owns the logical identity in `.actor(Type.self, identity:)`.
 
 Deployment-size admission belongs to the service adapter after Wrangler has
 assembled the complete Worker upload. The reactor's standalone gzip size is
