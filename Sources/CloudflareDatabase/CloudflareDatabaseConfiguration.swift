@@ -29,7 +29,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
     private typealias OpenContainer =
         @Sendable (
             any StorageEngine,
-            Subspace,
+            [String],
             any StorageMonotonicClock,
             any WallClock
         ) async throws -> DBContainer
@@ -162,13 +162,13 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
-            openContainer: { engine, root, monotonicClock, wallClock in
+            openContainer: { engine, rootPath, monotonicClock, wallClock in
                 try await DBContainer.open(
                     for: schema,
                     configuration: DBConfiguration(
                         name: databaseName,
                         storageEngine: engine,
-                        databaseRoot: root,
+                        databaseRootPath: rootPath,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
                         itemStorage: itemStorage,
@@ -206,14 +206,14 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
-            openContainer: { engine, root, monotonicClock, wallClock in
+            openContainer: { engine, rootPath, monotonicClock, wallClock in
                 try await DBContainer.open(
                     for: schema,
                     migrationPlan: migrationPlan,
                     configuration: DBConfiguration(
                         name: databaseName,
                         storageEngine: engine,
-                        databaseRoot: root,
+                        databaseRootPath: rootPath,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
                         itemStorage: itemStorage,
@@ -273,13 +273,13 @@ public struct CloudflareDatabaseConfiguration: Sendable {
     #else
     package func open(
         storageEngine: any StorageEngine,
-        databaseRoot: Subspace,
+        databaseRootPath: [String],
         monotonicClock: any StorageMonotonicClock,
         wallClock: any WallClock
     ) async throws -> DBContainer {
         try await openContainer(
             storageEngine,
-            databaseRoot,
+            databaseRootPath,
             monotonicClock,
             wallClock
         )

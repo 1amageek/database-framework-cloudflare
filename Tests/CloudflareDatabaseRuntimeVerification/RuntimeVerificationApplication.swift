@@ -17,9 +17,8 @@ final class RuntimeVerificationApplication:
         #if CLOUDFLARE_RUNTIME_MULTI_BASE
         self.storageLayout = try CloudflareDatabaseStorageLayout(
             domainID: DatabaseStorageDomain.ID("primary"),
-            domainNamespacePath: ["database", "runtime-verification"],
-            placementID: Base.Placement.ID("default"),
-            baseNamespacePath: ["bases"]
+            domainRootPath: ["database", "runtime-verification"],
+            placementID: Base.Placement.ID("default")
         )
         #endif
     }

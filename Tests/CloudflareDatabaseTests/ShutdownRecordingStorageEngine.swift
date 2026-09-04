@@ -39,10 +39,20 @@ final class ShutdownRecordingStorageEngine: StorageEngine, Sendable {
     private let rejectsTransactionCreation: Bool
 
     init(configuration: Configuration) async throws {
-        self.backing = try await InMemoryEngine(configuration: .init())
+        self.backing = InMemoryEngine(configuration: .init())
         self.probe = configuration.probe
         self.rejectsTransactionCreation =
             configuration.rejectsTransactionCreation
+    }
+
+    /// The wrapper owns no storage of its own: identity and Directory
+    /// authority stay with the backing engine that produces the transactions.
+    var transactionDomain: StorageTransactionDomain {
+        backing.transactionDomain
+    }
+
+    var directoryAccess: any DirectoryAccess {
+        backing.directoryAccess
     }
 
     func createTransaction() throws -> InMemoryTransaction {

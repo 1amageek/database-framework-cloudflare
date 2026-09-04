@@ -147,6 +147,14 @@ default and a backend choice.
   or credential handling, and no process signal or process lifecycle code.
 - An invocation is opaque. `CloudflareDatabaseInvocation` exposes only context
   and request bytes; the package performs no wire decoding of them.
+- A database root is a Directory path, not a byte prefix. Without `MultiBase`
+  the container opens at the store root Directory, which the dedicated Durable
+  Object store owns exclusively. With `MultiBase`,
+  `CloudflareDatabaseStorageLayout` carries the single domain's non-empty
+  `domainRootPath` and validates it before any storage call.
+- A placement names a domain and nothing else. `database-framework` fixes a Base
+  Partition at `bases/<Base.ID>` below its domain's database root, so this
+  package neither accepts nor forwards a placement path.
 
 ## Runtime Flows
 
@@ -159,7 +167,7 @@ host start(callID)
   -> configuration.validateHostingCapabilities()
   -> create Cloudflare Durable Object storage engine
   -> MultiBase: build DatabaseStorageTopology (domain, placement, default)
-     standard: open at the database root subspace
+     standard: open at the store root Directory (empty database root path)
   -> open DBContainer
   -> application.makeSession(for: container)
   -> re-check shutdown, then complete success
@@ -258,8 +266,9 @@ Change impact:
 - A change to the reactor ABI, completion statuses, or payload ownership
   invalidates both the Swift and the TypeScript evidence and requires a
   coordinated host change.
-- A change to the `database-framework` contract invalidates the exact pin. The
-  pin moves only after the reactor graph and the trait matrices are re-verified.
+- A change to the `database-framework` contract invalidates the resolved
+  release. The requirement's lower bound moves only after the reactor graph and
+  the trait matrices are re-verified against the new release.
 - A change to the adapter boundary — for example depending on a server product,
   interpreting DatabaseWire, or adding a backend choice — contradicts ADR-0003
   and requires superseding that decision before implementation.

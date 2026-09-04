@@ -8,9 +8,8 @@ func makeCloudflareTestStorageLayout(
 ) throws -> CloudflareDatabaseStorageLayout {
     try CloudflareDatabaseStorageLayout(
         domainID: DatabaseStorageDomain.ID("primary"),
-        domainNamespacePath: ["database", namespace],
-        placementID: Base.Placement.ID("default"),
-        baseNamespacePath: ["bases"]
+        domainRootPath: ["database", namespace],
+        placementID: Base.Placement.ID("default")
     )
 }
 #endif

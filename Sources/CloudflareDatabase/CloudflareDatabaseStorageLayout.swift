@@ -3,32 +3,29 @@ import DatabaseEngine
 import DatabaseKit
 
 /// Application-selected logical layout for the single Cloudflare storage domain.
+///
+/// `database-framework` addresses a Base Partition at `bases/<Base.ID>` below
+/// its domain's database root, so a placement names a domain and carries no
+/// path of its own.
 public struct CloudflareDatabaseStorageLayout: Sendable, Hashable {
-    public let domainNamespacePath: [String]
+    /// Directory path of the domain's database root.
+    public let domainRootPath: [String]
     public let domainID: DatabaseStorageDomain.ID
     public let placementID: Base.Placement.ID
-    public let baseNamespacePath: [String]
 
     public init(
         domainID: DatabaseStorageDomain.ID,
-        domainNamespacePath: [String],
-        placementID: Base.Placement.ID,
-        baseNamespacePath: [String]
+        domainRootPath: [String],
+        placementID: Base.Placement.ID
     ) throws(CloudflareDatabaseConfigurationError) {
-        guard !domainNamespacePath.isEmpty,
-            domainNamespacePath.allSatisfy({ !$0.isEmpty })
+        guard !domainRootPath.isEmpty,
+            domainRootPath.allSatisfy({ !$0.isEmpty })
         else {
-            throw .invalidStorageNamespacePath
-        }
-        guard !baseNamespacePath.isEmpty,
-            baseNamespacePath.allSatisfy({ !$0.isEmpty })
-        else {
-            throw .invalidBasePlacementPath
+            throw .invalidStorageDomainRootPath
         }
         self.domainID = domainID
-        self.domainNamespacePath = domainNamespacePath
+        self.domainRootPath = domainRootPath
         self.placementID = placementID
-        self.baseNamespacePath = baseNamespacePath
     }
 }
 #endif

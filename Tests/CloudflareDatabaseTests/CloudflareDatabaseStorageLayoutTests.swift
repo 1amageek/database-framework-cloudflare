@@ -6,45 +6,41 @@ import Testing
 
 @Suite("Cloudflare database storage layout")
 struct CloudflareDatabaseStorageLayoutTests {
-    @Test("layout preserves the application-selected namespace")
+    @Test("layout preserves the application-selected domain root")
     func preservesTopologyIdentity() throws {
         let expectedDomainID = try DatabaseStorageDomain.ID("primary")
         let expectedPlacementID = try Base.Placement.ID("default")
         let layout = try CloudflareDatabaseStorageLayout(
             domainID: expectedDomainID,
-            domainNamespacePath: ["database", "main"],
-            placementID: expectedPlacementID,
-            baseNamespacePath: ["bases"]
+            domainRootPath: ["database", "main"],
+            placementID: expectedPlacementID
         )
 
         #expect(layout.domainID == expectedDomainID)
-        #expect(layout.domainNamespacePath == ["database", "main"])
+        #expect(layout.domainRootPath == ["database", "main"])
         #expect(layout.placementID == expectedPlacementID)
-        #expect(layout.baseNamespacePath == ["bases"])
     }
 
-    @Test("empty topology paths remain typed configuration failures")
+    @Test("empty domain root paths remain typed configuration failures")
     func rejectsEmptyPaths() throws {
         #expect(
             throws: CloudflareDatabaseConfigurationError
-                .invalidStorageNamespacePath
+                .invalidStorageDomainRootPath
         ) {
             try CloudflareDatabaseStorageLayout(
                 domainID: DatabaseStorageDomain.ID("primary"),
-                domainNamespacePath: [],
-                placementID: Base.Placement.ID("default"),
-                baseNamespacePath: ["bases"]
+                domainRootPath: [],
+                placementID: Base.Placement.ID("default")
             )
         }
         #expect(
             throws: CloudflareDatabaseConfigurationError
-                .invalidBasePlacementPath
+                .invalidStorageDomainRootPath
         ) {
             try CloudflareDatabaseStorageLayout(
                 domainID: DatabaseStorageDomain.ID("primary"),
-                domainNamespacePath: ["database"],
-                placementID: Base.Placement.ID("default"),
-                baseNamespacePath: [""]
+                domainRootPath: ["database", ""],
+                placementID: Base.Placement.ID("default")
             )
         }
     }
