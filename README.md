@@ -219,17 +219,20 @@ responsibilities.
 
 ## Storage composition
 
-The default composition owns one ordinary database root and transfers one
-Durable Object storage engine to `DBContainer`.
+The default composition opens the store root Directory and transfers one
+Durable Object storage engine to `DBContainer`. A dedicated Durable Object
+store owns that root exclusively.
 
-The optional `MultiBase` trait adds an explicit Cloudflare storage layout:
+The optional `MultiBase` trait adds an explicit Cloudflare storage layout. A
+layout names the domain's database root Directory; `database-framework`
+addresses a Base Partition at `bases/<Base.ID>` below that root, so a placement
+carries no path of its own:
 
 ```swift
 let storageLayout = try CloudflareDatabaseStorageLayout(
     domainID: DatabaseStorageDomain.ID("primary"),
-    domainNamespacePath: ["database", "calendar"],
-    placementID: Base.Placement.ID("default"),
-    baseNamespacePath: ["bases"]
+    domainRootPath: ["database", "calendar"],
+    placementID: Base.Placement.ID("default")
 )
 ```
 
