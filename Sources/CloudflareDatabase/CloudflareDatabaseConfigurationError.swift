@@ -14,9 +14,6 @@ public enum CloudflareDatabaseConfigurationError:
     #if CLOUDFLARE_DATABASE_MULTI_BASE
     /// A Cloudflare storage namespace path is empty or has an empty component.
     case invalidStorageNamespacePath
-
-    /// A Cloudflare Base placement path is empty or has an empty component.
-    case invalidBasePlacementPath
     #endif
 
     public var description: String {
@@ -28,8 +25,6 @@ public enum CloudflareDatabaseConfigurationError:
         #if CLOUDFLARE_DATABASE_MULTI_BASE
         case .invalidStorageNamespacePath:
             return "Cloudflare storage namespace path must contain only non-empty components"
-        case .invalidBasePlacementPath:
-            return "Cloudflare Base placement path must contain only non-empty components"
         #endif
         }
     }

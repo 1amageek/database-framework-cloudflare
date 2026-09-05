@@ -13,18 +13,16 @@ struct CloudflareDatabaseStorageLayoutTests {
         let layout = try CloudflareDatabaseStorageLayout(
             domainID: expectedDomainID,
             domainNamespacePath: ["database", "main"],
-            placementID: expectedPlacementID,
-            baseNamespacePath: ["bases"]
+            placementID: expectedPlacementID
         )
 
         #expect(layout.domainID == expectedDomainID)
         #expect(layout.domainNamespacePath == ["database", "main"])
         #expect(layout.placementID == expectedPlacementID)
-        #expect(layout.baseNamespacePath == ["bases"])
     }
 
-    @Test("empty topology paths remain typed configuration failures")
-    func rejectsEmptyPaths() throws {
+    @Test("empty domain paths remain typed configuration failures")
+    func rejectsEmptyDomainPath() throws {
         #expect(
             throws: CloudflareDatabaseConfigurationError
                 .invalidStorageNamespacePath
@@ -32,19 +30,7 @@ struct CloudflareDatabaseStorageLayoutTests {
             try CloudflareDatabaseStorageLayout(
                 domainID: DatabaseStorageDomain.ID("primary"),
                 domainNamespacePath: [],
-                placementID: Base.Placement.ID("default"),
-                baseNamespacePath: ["bases"]
-            )
-        }
-        #expect(
-            throws: CloudflareDatabaseConfigurationError
-                .invalidBasePlacementPath
-        ) {
-            try CloudflareDatabaseStorageLayout(
-                domainID: DatabaseStorageDomain.ID("primary"),
-                domainNamespacePath: ["database"],
-                placementID: Base.Placement.ID("default"),
-                baseNamespacePath: [""]
+                placementID: Base.Placement.ID("default")
             )
         }
     }

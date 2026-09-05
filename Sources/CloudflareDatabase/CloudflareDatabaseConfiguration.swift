@@ -29,7 +29,6 @@ public struct CloudflareDatabaseConfiguration: Sendable {
     private typealias OpenContainer =
         @Sendable (
             any StorageEngine,
-            Subspace,
             any StorageMonotonicClock,
             any WallClock
         ) async throws -> DBContainer
@@ -162,13 +161,12 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
-            openContainer: { engine, root, monotonicClock, wallClock in
+            openContainer: { engine, monotonicClock, wallClock in
                 try await DBContainer.open(
                     for: schema,
                     configuration: DBConfiguration(
                         name: databaseName,
                         storageEngine: engine,
-                        databaseRoot: root,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
                         itemStorage: itemStorage,
@@ -206,14 +204,13 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
-            openContainer: { engine, root, monotonicClock, wallClock in
+            openContainer: { engine, monotonicClock, wallClock in
                 try await DBContainer.open(
                     for: schema,
                     migrationPlan: migrationPlan,
                     configuration: DBConfiguration(
                         name: databaseName,
                         storageEngine: engine,
-                        databaseRoot: root,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
                         itemStorage: itemStorage,
@@ -273,13 +270,11 @@ public struct CloudflareDatabaseConfiguration: Sendable {
     #else
     package func open(
         storageEngine: any StorageEngine,
-        databaseRoot: Subspace,
         monotonicClock: any StorageMonotonicClock,
         wallClock: any WallClock
     ) async throws -> DBContainer {
         try await openContainer(
             storageEngine,
-            databaseRoot,
             monotonicClock,
             wallClock
         )

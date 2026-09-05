@@ -38,8 +38,16 @@ final class ShutdownRecordingStorageEngine: StorageEngine, Sendable {
     private let probe: Probe
     private let rejectsTransactionCreation: Bool
 
+    var transactionDomain: StorageTransactionDomain {
+        backing.transactionDomain
+    }
+
+    var directoryAccess: any DirectoryAccess {
+        backing.directoryAccess
+    }
+
     init(configuration: Configuration) async throws {
-        self.backing = try await InMemoryEngine(configuration: .init())
+        self.backing = InMemoryEngine()
         self.probe = configuration.probe
         self.rejectsTransactionCreation =
             configuration.rejectsTransactionCreation

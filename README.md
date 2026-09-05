@@ -228,8 +228,7 @@ The optional `MultiBase` trait adds an explicit Cloudflare storage layout:
 let storageLayout = try CloudflareDatabaseStorageLayout(
     domainID: DatabaseStorageDomain.ID("primary"),
     domainNamespacePath: ["database", "calendar"],
-    placementID: Base.Placement.ID("default"),
-    baseNamespacePath: ["bases"]
+    placementID: Base.Placement.ID("default")
 )
 ```
 

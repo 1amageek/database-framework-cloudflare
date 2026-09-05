@@ -153,7 +153,7 @@ public actor CloudflareDatabaseRuntime {
                     domains: [
                         try DatabaseStorageDomain(
                             id: configuration.storageLayout.domainID,
-                            namespacePath: configuration.storageLayout
+                            rootPath: configuration.storageLayout
                                 .domainNamespacePath,
                             storageEngine: storageEngine
                         )
@@ -161,8 +161,7 @@ public actor CloudflareDatabaseRuntime {
                     placements: [
                         try DatabaseStoragePlacement(
                             id: configuration.storageLayout.placementID,
-                            domainID: configuration.storageLayout.domainID,
-                            path: configuration.storageLayout.baseNamespacePath
+                            domainID: configuration.storageLayout.domainID
                         )
                     ],
                     defaultPlacementID: configuration.storageLayout.placementID
@@ -181,7 +180,6 @@ public actor CloudflareDatabaseRuntime {
             #else
             openedContainer = try await configuration.open(
                 storageEngine: storageEngine,
-                databaseRoot: Subspace(),
                 monotonicClock: monotonicClock,
                 wallClock: wallClock
             )
