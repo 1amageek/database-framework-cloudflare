@@ -154,12 +154,12 @@ public actor CloudflareDatabaseRuntime {
                         try DatabaseStorageDomain(
                             id: configuration.storageLayout.domainID,
                             rootPath: configuration.storageLayout
-                                .domainNamespacePath,
+                                .domainRootPath,
                             storageEngine: storageEngine
                         )
                     ],
                     placements: [
-                        try DatabaseStoragePlacement(
+                        DatabaseStoragePlacement(
                             id: configuration.storageLayout.placementID,
                             domainID: configuration.storageLayout.domainID
                         )
@@ -180,6 +180,7 @@ public actor CloudflareDatabaseRuntime {
             #else
             openedContainer = try await configuration.open(
                 storageEngine: storageEngine,
+                databaseRootPath: [],
                 monotonicClock: monotonicClock,
                 wallClock: wallClock
             )
