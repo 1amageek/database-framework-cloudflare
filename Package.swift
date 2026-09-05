@@ -121,7 +121,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0904.0",
+            from: "26.0905.0",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
@@ -131,7 +131,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0831.1"
+            from: "26.0905.0"
         ),
     ],
     targets: [
