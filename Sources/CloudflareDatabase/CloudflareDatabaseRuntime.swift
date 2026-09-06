@@ -228,6 +228,14 @@ public actor CloudflareDatabaseRuntime {
                 status: .startupFailed,
                 message: error.description
             )
+        } catch let error as StorageError {
+            finishFailedStartup()
+            // Keep diagnostics actionable without exposing storage messages or keys.
+            fail(
+                callID: callID,
+                status: .startupFailed,
+                message: "Database runtime startup failed: storage code=\(error.code.rawValue) backend=\(error.backend.rawValue) operation=\(error.operation.rawValue)"
+            )
         } catch {
             finishFailedStartup()
             fail(

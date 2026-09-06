@@ -177,7 +177,12 @@ Ownership on the failure paths is explicit. If topology construction fails, the
 storage engine has not transferred ownership, so this package requests its
 shutdown and awaits completion. If session creation fails, the opened container
 is shut down. Cancellation resolves as `cancelled`, a configuration error as
-`startupFailed` carrying its description.
+`startupFailed` carrying its description. Storage startup failures retain only
+their closed `code`, `backend`, and `operation` identifiers in the private
+`startupFailed` diagnostic. Arbitrary storage messages, underlying descriptions,
+keys, and credentials never cross this boundary. Unknown errors retain the
+generic startup diagnostic. The existing startup-failure test verifies this
+classification and redaction; no completion status or retry policy changes.
 
 ### Invocation
 

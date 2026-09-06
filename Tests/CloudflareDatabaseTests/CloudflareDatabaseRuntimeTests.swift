@@ -1,6 +1,7 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorageTesting
 import DatabaseTypes
+import StorageKit
 import StorageKitSystemClock
 import Testing
 
@@ -183,6 +184,36 @@ struct CloudflareDatabaseRuntimeTests {
         await runtime.start(callID: 51)
         #expect(completion.completion(callID: 51)?.status == .success)
         await runtime.shutdown(callID: 52)
+
+        let storageFailureCompletion = RecordingCloudflareDatabaseCompletion()
+        let storageFailureRuntime = CloudflareDatabaseRuntime(
+            application: AnyCloudflareDatabaseApplication(
+                try RuntimeVerificationApplication()
+            ),
+            storageClient: InMemoryCloudflareDurableObjectStorageClient(),
+            monotonicClock: SystemStorageClock(),
+            wallClock: FixedCloudflareTestWallClock(),
+            completion: CloudflareDatabaseCompletionChannel(
+                completion: storageFailureCompletion
+            ),
+            createStorageEngine: { _ in
+                throw StorageError(
+                    code: .incompatibleStorageLayout,
+                    operation: .open,
+                    backend: .cloudflareDurableObject,
+                    message: "private storage key",
+                    underlyingDescription: "private credential"
+                )
+            }
+        )
+        await storageFailureRuntime.start(callID: 55)
+        let storageFailure = try #require(
+            storageFailureCompletion.completion(callID: 55)
+        )
+        #expect(storageFailure.status == .startupFailed)
+        #expect(string(from: storageFailure.payload) ==
+            "Database runtime startup failed: storage code=incompatible_storage_layout backend=cloudflare_durable_object operation=open")
+        await storageFailureRuntime.shutdown(callID: 56)
 
         let preOpenProbe = ShutdownRecordingStorageEngine.Probe()
         let preOpenEngine = try await ShutdownRecordingStorageEngine(
