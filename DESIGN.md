@@ -282,6 +282,26 @@ Change impact:
 
 ## Planned SQL Runtime Hosting
 
+S01 is a dependency and application-session mapping change, not a reactor ABI
+change. The application may consume the [Kit query values and typed columns](../database-kit/Sources/DatabaseKit/Query/DESIGN.md#s01-public-query-boundary)
+produced by Framework, while CloudflareDatabaseInvocation and TypeScript host
+continue to carry opaque bounded bytes. QueryColumn's move to DatabaseKit does
+not introduce DatabaseWire, server dispatch, rich-value JSON codecs or SQL
+meaning into this package. ABI v3 completion statuses and payload ownership are
+unchanged; this ABI version is independent of Wire v3/v5.
+
+Application model declarations for rich query fields use Kit's admitted
+queryType and existing generated persistence traversal. S01 changes this design
+only: the host has no direct row-codec caller to migrate. S18 verifies the final
+pinned URL dependency graph, real Embedded reactor and local Durable Object
+persist/reload path with declared rich fields, ordered duplicate columns,
+zero-row metadata and payload/resource rejection. Native tests alone do not
+prove this path; TypeScript mocks do not prove lossless persistence. The same
+Sendable, Mutex/actor and retained-owner contract applies on every target.
+Exact counts/toolchains remain owned by the existing harness and operating
+authority. Missing pinned SDK/runtime support remains an explicit unresolved
+gate rather than evidence from a substituted toolchain or synthetic backend.
+
 The application's session may consume the Framework statement/block entry
 contract described by the
 [SQL profile](../database-kit/Sources/DatabaseKit/Query/SQL/DESIGN.md). This host
