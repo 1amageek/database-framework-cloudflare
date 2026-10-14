@@ -279,3 +279,28 @@ Change impact:
   and requires superseding that decision before implementation.
 - A change to `storage-kit`'s Durable Object storage or host transport
   invalidates the storage limit validation and the feasibility run.
+
+## Planned SQL Runtime Hosting
+
+The application's session may consume the Framework statement/block entry
+contract described by the
+[SQL profile](../database-kit/Sources/DatabaseKit/Query/SQL/DESIGN.md). This host
+continues to carry opaque request/context bytes. It does not add DatabaseWire
+dispatch, SQL parsing, schema interpretation, or a dependency on Server.
+
+FIFO admission and one persistent reactor/container own invocation lifetime.
+A SQL block must finish its data transaction, checkpoint/schema state,
+sequence completion, and resource cleanup before completion bytes cross the
+reactor boundary. The Durable Object storage adapter owns the same checkpoint
+and read-overlay contract as native adapters; Embedded never substitutes raw
+mutable state or a no-op lock for shared synchronization.
+
+Timezone data and other selected host capabilities are injected explicitly.
+Unavailable capabilities are typed failures; there is no silent UTC, regex,
+backend, or CPU fallback. Rich result bytes remain bounded and owned through
+completion correlation.
+
+Change verification executes the exact WASM/Embedded reactor, real local
+Durable Object persistence/restart, checkpoint rollback, ordered/empty result
+metadata, resource limits, cancellation, and shutdown. Compile/link and
+TypeScript mocks alone are not this host's behavioral evidence.
