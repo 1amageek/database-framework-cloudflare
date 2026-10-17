@@ -152,6 +152,13 @@ default and a backend choice.
   Object store owns exclusively. With `MultiBase`,
   `CloudflareDatabaseStorageLayout` carries the single domain's non-empty
   `domainRootPath` and validates it before any storage call.
+- Application configuration carries an optional immutable `sqlDatabaseName` and
+  forwards it unchanged to Framework `DBConfiguration` in compiled and migration
+  startup, in both standard and `MultiBase` graphs. It is the explicit SQL
+  identity consumed by `CURRENT_DATABASE`; the separate `databaseName` remains
+  the existing diagnostic name. An absent SQL identity stays absent, and the
+  selected Framework function owns its typed failure. This forwarding introduces
+  no query, authorization, storage, lifecycle, or shared-state policy.
 - A placement names a domain and nothing else. `database-framework` fixes a Base
   Partition at `bases/<Base.ID>` below its domain's database root, so this
   package neither accepts nor forwards a placement path.
@@ -258,6 +265,7 @@ falsifies it.
 
 | Invariant | Required evidence |
 |---|---|
+| Explicit SQL database identity reaches the actual opened container, independently of its diagnostic name, through compiled and migration startup | `CloudflareDatabaseRuntimeTests.persistsAndReadsThroughApplicationSession` configuration-opening assertions in standard and MultiBase graphs |
 | ABI v3 statuses and link shape are exactly as declared | `scripts/verify-reactor-abi.mjs` and `scripts/extract-reactor-link-arguments.mjs` against `Protocol/database-completion-status-v3.json` |
 | the reactor graph excludes server and unselected features | reactor link verification with `DatabaseServerRuntime.o` and the server operation and host objects in the forbidden-object list |
 | the reactor builds and runs on the pinned Embedded WASM SDK | `scripts/verify-runtime-feasibility.sh` with the matching `_wasm-embedded` SDK |

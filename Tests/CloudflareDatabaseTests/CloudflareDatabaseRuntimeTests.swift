@@ -1,5 +1,7 @@
 import CloudflareDatabase
 import CloudflareDurableObjectStorageTesting
+@_spi(DatabaseExecution) import DatabaseEngine
+import DatabaseKit
 import DatabaseTypes
 import StorageKit
 import StorageKitSystemClock
@@ -9,6 +11,7 @@ import Testing
 struct CloudflareDatabaseRuntimeTests {
     @Test("application protocol persists and reads through DBContainer")
     func persistsAndReadsThroughApplicationSession() async throws {
+        try await verifySQLDatabaseNameForwarding()
         let completion = RecordingCloudflareDatabaseCompletion()
         let runtime = try makeRuntime(completion: completion)
 
@@ -367,6 +370,79 @@ struct CloudflareDatabaseRuntimeTests {
                 == .success
         )
         await application.waitUntilSessionShutdown()
+    }
+
+    private func verifySQLDatabaseNameForwarding() async throws {
+        let application = try RuntimeVerificationApplication()
+        let original = try await application.configuration
+        for sqlName in [String?("application-sql-database"), nil] {
+            #if CLOUDFLARE_TEST_MULTI_BASE
+            let configurations = [
+                CloudflareDatabaseConfiguration(partitionIdentity: original.partitionIdentity,
+                    storageLayout: original.storageLayout, schema: original.declaredSchema,
+                    runtimeConfiguration: original.runtimeConfiguration, security: original.security,
+                    databaseName: "diagnostic-name", sqlDatabaseName: sqlName),
+                CloudflareDatabaseConfiguration(partitionIdentity: original.partitionIdentity,
+                    storageLayout: original.storageLayout, schema: original.declaredSchema,
+                    migrationPlan: RuntimeVerificationMigrationPlan.self,
+                    runtimeConfiguration: original.runtimeConfiguration, security: original.security,
+                    databaseName: "diagnostic-name", sqlDatabaseName: sqlName),
+            ]
+            #else
+            let configurations = [
+                CloudflareDatabaseConfiguration(partitionIdentity: original.partitionIdentity,
+                    schema: original.declaredSchema, runtimeConfiguration: original.runtimeConfiguration,
+                    security: original.security, databaseName: "diagnostic-name", sqlDatabaseName: sqlName),
+                CloudflareDatabaseConfiguration(partitionIdentity: original.partitionIdentity,
+                    schema: original.declaredSchema, migrationPlan: RuntimeVerificationMigrationPlan.self,
+                    runtimeConfiguration: original.runtimeConfiguration, security: original.security,
+                    databaseName: "diagnostic-name", sqlDatabaseName: sqlName),
+            ]
+            #endif
+            for configuration in configurations {
+                #expect(configuration.sqlDatabaseName == sqlName)
+                #expect(configuration.databaseName == "diagnostic-name")
+                let engine = InMemoryEngine(configuration: .init())
+                let container: DBContainer
+                #if CLOUDFLARE_TEST_MULTI_BASE
+                let layout = configuration.storageLayout
+                let topology = try DatabaseStorageTopology(controlDomainID: layout.domainID,
+                    domains: [DatabaseStorageDomain(id: layout.domainID, rootPath: layout.domainRootPath,
+                        storageEngine: engine)],
+                    placements: [DatabaseStoragePlacement(id: layout.placementID, domainID: layout.domainID)],
+                    defaultPlacementID: layout.placementID)
+                container = try await configuration.open(storageTopology: topology,
+                    monotonicClock: SystemStorageClock(), wallClock: FixedCloudflareTestWallClock())
+                #else
+                container = try await configuration.open(storageEngine: engine, databaseRootPath: [],
+                    monotonicClock: SystemStorageClock(), wallClock: FixedCloudflareTestWallClock())
+                #endif
+                defer { await container.shutdown() }
+                #expect(container.configuration.sqlDatabaseName == sqlName)
+                #expect(container.configuration.name == "diagnostic-name")
+                let session = try await application.makeSession(for: container)
+                defer { await session.shutdown() }
+                let authorization = AuthorizationContext.authenticated(Principal(
+                    identifier: RuntimeVerificationSession.principalIdentifier, roles: ["admin"]))
+                let context: DatabaseContext
+                #if CLOUDFLARE_TEST_MULTI_BASE
+                context = container.session(authorization: authorization)
+                    .base(try Base.ID("runtime-verification")).newContext()
+                #else
+                context = container.newContext(authorization: authorization)
+                #endif
+                let query = SelectQuery(projection: [.expression(.function(FunctionCall(
+                    name: "current_database", arguments: [])))], source: .values([[]]))
+                if let sqlName {
+                    let response = try await context.query(query)
+                    #expect(response.rows.map(\.values) == [[.primitive(.string(sqlName))]])
+                } else {
+                    await #expect(throws: SQLSessionEvaluationError.missingDatabaseIdentity) {
+                        try await context.query(query)
+                    }
+                }
+            }
+        }
     }
 
     private func makeRuntime(

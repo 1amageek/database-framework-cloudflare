@@ -40,6 +40,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
     public let declaredSchema: Schema
     public let security: SecurityConfiguration
     public let databaseName: String?
+    public let sqlDatabaseName: String?
     public let itemStorage: ItemStorageConfiguration
     public let logging: DatabaseLoggingConfiguration
     public let metrics: DatabaseMetricsConfiguration
@@ -60,6 +61,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
+        sqlDatabaseName: String? = nil,
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -72,6 +74,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
+            sqlDatabaseName: sqlDatabaseName,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -83,6 +86,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
                         storageTopology: topology,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
+                        sqlDatabaseName: sqlDatabaseName,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -104,6 +108,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
+        sqlDatabaseName: String? = nil,
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -116,6 +121,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
+            sqlDatabaseName: sqlDatabaseName,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -128,6 +134,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
                         storageTopology: topology,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
+                        sqlDatabaseName: sqlDatabaseName,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -147,6 +154,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
+        sqlDatabaseName: String? = nil,
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -159,6 +167,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
+            sqlDatabaseName: sqlDatabaseName,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -171,6 +180,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
                         databaseRootPath: rootPath,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
+                        sqlDatabaseName: sqlDatabaseName,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -191,6 +201,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration = .enabled(),
         databaseName: String? = nil,
+        sqlDatabaseName: String? = nil,
         itemStorage: ItemStorageConfiguration = .v1,
         logging: DatabaseLoggingConfiguration = .disabled,
         metrics: DatabaseMetricsConfiguration = .disabled
@@ -203,6 +214,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
             runtimeConfiguration: runtimeConfiguration,
             security: security,
             databaseName: databaseName,
+            sqlDatabaseName: sqlDatabaseName,
             itemStorage: itemStorage,
             logging: logging,
             metrics: metrics,
@@ -216,6 +228,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
                         databaseRootPath: rootPath,
                         monotonicClock: monotonicClock,
                         wallClock: wallClock,
+                        sqlDatabaseName: sqlDatabaseName,
                         itemStorage: itemStorage,
                         logging: logging,
                         metrics: metrics
@@ -236,6 +249,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
         runtimeConfiguration: DatabaseRuntimeConfiguration,
         security: SecurityConfiguration,
         databaseName: String?,
+        sqlDatabaseName: String?,
         itemStorage: ItemStorageConfiguration,
         logging: DatabaseLoggingConfiguration,
         metrics: DatabaseMetricsConfiguration,
@@ -252,6 +266,7 @@ public struct CloudflareDatabaseConfiguration: Sendable {
         self.runtimeConfiguration = runtimeConfiguration
         self.security = security
         self.databaseName = databaseName
+        self.sqlDatabaseName = sqlDatabaseName
         self.itemStorage = itemStorage
         self.logging = logging
         self.metrics = metrics
