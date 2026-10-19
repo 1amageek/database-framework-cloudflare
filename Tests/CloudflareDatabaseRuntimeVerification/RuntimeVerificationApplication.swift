@@ -81,6 +81,20 @@ final class RuntimeVerificationApplication:
             #else
             let indexConfigurations: [any IndexRuntimeConfiguration] = []
             #endif
+            #if CLOUDFLARE_RUNTIME_GRAPH_INDEXES
+            entities.append(contentsOf: [
+                try RuntimeVerificationGraphUser.schemaEntity,
+                try RuntimeVerificationGraphStatement.schemaEntity,
+            ])
+            entityRuntimes.append(contentsOf: [
+                try DatabaseFrameworkRuntime.entity(RuntimeVerificationGraphUser.self),
+                try DatabaseFrameworkRuntime.entity(RuntimeVerificationGraphStatement.self),
+            ])
+            authorizationPolicies.append(contentsOf: [
+                AuthorizationPolicyHandler(RuntimeVerificationGraphUser.self),
+                AuthorizationPolicyHandler(RuntimeVerificationGraphStatement.self),
+            ])
+            #endif
 
             let schema = try Schema(entities: entities)
             let runtimeConfiguration = try DatabaseFrameworkRuntime.configuration(

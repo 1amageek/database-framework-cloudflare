@@ -108,6 +108,14 @@ async function verifyRuntime(): Promise<void> {
   if (includesVectorIndexes) {
     await verifyVectorLifecycle(connection);
   }
+  if (includesGraphIndexes) {
+    const graphResponse = await invokeApplication(connection, "sql:graph");
+    assertTextResponse(
+      graphResponse,
+      "sql:graph:verified:cases=5",
+      "graph SQL and SPARQL"
+    );
+  }
   await connection.alarm();
   const expectedAlarmTimestampMilliseconds = 4_102_444_800_000;
   if (scheduledAlarmTimestamps.length !== 1
@@ -134,6 +142,7 @@ async function verifyRuntime(): Promise<void> {
     readResponseBytes: readResponse.byteLength,
     echoResponseBytes: echoResponse.byteLength,
     vectorLifecycle: includesVectorIndexes,
+    graphDatabaseCases: includesGraphIndexes ? 5 : 0,
     alarmInvocation: true,
     scheduledAlarmTimestampMilliseconds: scheduledAlarmTimestamps[0],
     compilationMilliseconds,

@@ -59,5 +59,12 @@
   adapters, verify the reactor ABI, enforce artifact and address-space limits,
   instantiate the reactor, and complete the workerd restart-persistence smoke
   test.
+- Run `scripts/verify-standard-wasm-graph.sh` with the fixed Swift 6.4.0
+  release toolchain and its matching `swift-6.4.0-RELEASE_wasm` SDK. It builds
+  the verification reactor for standard WASI with only `GraphIndexes` and
+  requires the `sql:graph` invocation to report five verified SQL/SPARQL cases.
+  This lane owns graph runtime evidence because graph-enabled Embedded builds
+  do not terminate with Swift 6.4.0 (swiftlang/swift#93133); it does not
+  replace the Embedded feasibility gate.
 - Release verification uses URL dependencies only. A local package path may
   diagnose a failure but is not release evidence.

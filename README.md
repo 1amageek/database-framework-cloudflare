@@ -311,6 +311,7 @@ scripts/xcode-test-harness
 DATABASE_CLOUDFLARE_TEST_TRAITS=MultiBase scripts/xcode-test-harness
 DATABASE_CLOUDFLARE_TEST_TRAITS=AllRuntimeFeatures scripts/xcode-test-harness
 sh scripts/verify-runtime-feasibility.sh
+sh scripts/verify-standard-wasm-graph.sh
 ```
 
 The Xcode harness copies the package into an isolated work root before selecting
@@ -323,7 +324,9 @@ feasibility gate builds an application-specific reactor, validates ABI v3 and
 the selected link graph, performs a real typed `DBContainer` write/read through
 Durable Object SQLite, and repeats the read after a workerd restart. It also
 enforces Worker size, address-space, startup, ownership, and platform adapter
-constraints.
+constraints. The standard WASM graph lane builds the same reactor for
+standard WASI with `GraphIndexes` on the Swift 6.4.0 release and verifies SQL
+`SPARQL()` rewriting and direct SPARQL through Durable Object SQLite.
 
 The complete responsibility and dependency decision is recorded in
 [ADR-0003](Docs/ADR-0003-framework-adapter-and-standalone-server-boundaries.md).

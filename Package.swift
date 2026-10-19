@@ -202,6 +202,10 @@ let package = Package(
                     "CLOUDFLARE_RUNTIME_MULTI_BASE",
                     .when(traits: ["MultiBase"])
                 ),
+                .define(
+                    "CLOUDFLARE_RUNTIME_GRAPH_INDEXES",
+                    .when(traits: ["GraphIndexes"])
+                ),
             ],
             linkerSettings: unicodeDataSupportLinkerSettings + [
                 .unsafeFlags([

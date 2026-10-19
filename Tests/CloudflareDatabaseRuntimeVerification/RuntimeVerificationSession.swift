@@ -50,6 +50,12 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
                 in: context, maximumFrameBytes: 4_096)
         }
         let request = Self.string(from: invocation.request)
+        #if CLOUDFLARE_RUNTIME_GRAPH_INDEXES
+        if request == "sql:graph" {
+            try await GraphSQLVerification.verify(in: context)
+            return Self.bytes("sql:graph:verified:cases=5")
+        }
+        #endif
         if request == "sql:s17" {
             try await SQLApplicationVerification.verify(session: self)
             return Self.bytes("sql:s17:verified")
