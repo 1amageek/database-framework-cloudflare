@@ -6,18 +6,21 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     static let principalIdentifier = "runtime-verification"
 
     private let container: DBContainer
+    private let sqlFrameByteLimit: Int?
     #if CLOUDFLARE_TEST_MULTI_BASE
     private let baseID: Base.ID
     #endif
 
     #if CLOUDFLARE_TEST_MULTI_BASE
-    init(container: DBContainer, baseID: Base.ID) {
+    init(container: DBContainer, baseID: Base.ID, sqlFrameByteLimit: Int? = nil) {
         self.container = container
         self.baseID = baseID
+        self.sqlFrameByteLimit = sqlFrameByteLimit
     }
     #else
-    init(container: DBContainer) {
+    init(container: DBContainer, sqlFrameByteLimit: Int? = nil) {
         self.container = container
+        self.sqlFrameByteLimit = sqlFrameByteLimit
     }
     #endif
 
@@ -30,7 +33,6 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
         else {
             throw RuntimeVerificationError.unauthorizedContext
         }
-        let request = Self.string(from: invocation.request)
         let authorization = AuthorizationContext.authenticated(
             Principal(
                 identifier: Self.principalIdentifier,
@@ -45,6 +47,12 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
         #else
         context = container.newContext(authorization: authorization)
         #endif
+
+        if let sqlFrameByteLimit {
+            return try await SQLApplicationInvocation.respond(to: invocation.request,
+                in: context, maximumFrameBytes: sqlFrameByteLimit)
+        }
+        let request = Self.string(from: invocation.request)
 
         if request.hasPrefix("put:") {
             let title = String(request.dropFirst(4))

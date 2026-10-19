@@ -165,7 +165,7 @@ if [[ -n "$TEST_TRAITS" ]]; then
   done
 fi
 
-default_expected_test_count=18
+default_expected_test_count=22
 if trait_is_enabled MultiBase; then
   default_expected_test_count=$((default_expected_test_count + 2))
 fi

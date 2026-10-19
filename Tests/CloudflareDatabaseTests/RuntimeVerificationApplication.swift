@@ -6,11 +6,13 @@ final class RuntimeVerificationApplication:
     CloudflareDatabaseApplication,
     Sendable {
     private let partitionIdentity: StoragePartitionIdentity
+    private let sqlFrameByteLimit: Int?
     #if CLOUDFLARE_TEST_MULTI_BASE
     private let storageLayout: CloudflareDatabaseStorageLayout
     #endif
 
-    init() throws {
+    init(sqlFrameByteLimit: Int? = nil) throws {
+        self.sqlFrameByteLimit = sqlFrameByteLimit
         self.partitionIdentity = try StoragePartitionIdentity(
             databaseID: "runtime-verification"
         )
@@ -90,12 +92,13 @@ final class RuntimeVerificationApplication:
             .migrateIfNeeded()
         return RuntimeVerificationSession(
             container: database,
-            baseID: baseID
+            baseID: baseID,
+            sqlFrameByteLimit: sqlFrameByteLimit
         )
         #else
         try await database.admin(authorization: authorization)
             .migrateIfNeeded()
-        return RuntimeVerificationSession(container: database)
+        return RuntimeVerificationSession(container: database, sqlFrameByteLimit: sqlFrameByteLimit)
         #endif
     }
 }

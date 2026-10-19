@@ -171,6 +171,8 @@ let package = Package(
             name: "CloudflareDatabaseRuntimeVerification",
             dependencies: [
                 "CloudflareDatabase",
+                .product(name: "Database", package: "database-framework"),
+                .product(name: "DatabaseWire", package: "database-kit"),
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
@@ -222,6 +224,8 @@ let package = Package(
             name: "CloudflareDatabaseTests",
             dependencies: [
                 "CloudflareDatabase",
+                .product(name: "Database", package: "database-framework"),
+                .product(name: "DatabaseWire", package: "database-kit"),
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),

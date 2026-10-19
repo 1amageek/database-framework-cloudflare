@@ -23,13 +23,13 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
     func respond(
         to invocation: CloudflareDatabaseInvocation
     ) async throws -> ByteString {
+        let applicationContext = Self.string(from: invocation.context)
         guard
-            Self.string(from: invocation.context)
-                == Self.principalIdentifier
+            applicationContext == Self.principalIdentifier
+                || applicationContext == Self.principalIdentifier + ":sql"
         else {
             throw RuntimeVerificationError.unauthorizedContext
         }
-        let request = Self.string(from: invocation.request)
         let authorization = AuthorizationContext.authenticated(
             Principal(
                 identifier: Self.principalIdentifier,
@@ -44,6 +44,20 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
         #else
         context = container.newContext(authorization: authorization)
         #endif
+
+        if applicationContext == Self.principalIdentifier + ":sql" {
+            return try await SQLApplicationInvocation.respond(to: invocation.request,
+                in: context, maximumFrameBytes: 4_096)
+        }
+        let request = Self.string(from: invocation.request)
+        if request == "sql:s17" {
+            try await SQLApplicationVerification.verify(session: self)
+            return Self.bytes("sql:s17:verified")
+        }
+        if request == "sql:s17-restored" {
+            try await SQLApplicationVerification.verifyRestored(session: self)
+            return Self.bytes("sql:s17:restored")
+        }
 
         if request.hasPrefix("put:") {
             let title = String(request.dropFirst(4))

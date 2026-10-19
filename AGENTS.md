@@ -40,13 +40,12 @@
 - Run the Native package tests with the pinned `org.swift.64202608141a`
   toolchain through `build-for-testing` and `test-without-building`. Inject the
   toolchain's `usr/lib/swift/macosx/testing` directory into every test target's
-  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. The standard graph requires
-  exactly 18 passed tests. An isolated `MultiBase` graph is selected with
-  `DATABASE_CLOUDFLARE_TEST_TRAITS=MultiBase` and requires exactly 20 passed
-  tests. `DATABASE_CLOUDFLARE_TEST_TRAITS=AllRuntimeFeatures` requires exactly
-  21 passed tests, including the three VectorIndexes capability-admission
-  contracts. The harness derives the expected count from the selected traits
-  unless it is explicitly overridden. Every run requires zero failures, skips,
+  `TestingEnvironmentVariables.DYLD_LIBRARY_PATH`. Exact native counts are
+  owned by `scripts/xcode-test-harness`, which derives them from selected
+  traits. Select the isolated `MultiBase` graph with
+  `DATABASE_CLOUDFLARE_TEST_TRAITS=MultiBase` and the complete feature graph with
+  `DATABASE_CLOUDFLARE_TEST_TRAITS=AllRuntimeFeatures`. The latter includes the
+  VectorIndexes capability-admission contracts. Every run requires zero failures, skips,
   expected failures, or runtime warnings. Never reuse DerivedData across trait
   graphs.
 - Run `npm test` in `Workers/CloudflareDatabaseRuntime` and require exactly 120

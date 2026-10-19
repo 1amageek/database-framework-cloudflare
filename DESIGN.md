@@ -53,9 +53,10 @@ It owns:
 
 It does not own:
 
-- DatabaseWire framing, decoding, or dispatch. The package contains no
-  reference to `DatabaseWire`; an invocation carries opaque context and request
-  bytes whose meaning belongs to the application.
+- DatabaseWire framing, decoding, or dispatch. Production host targets do not
+  depend on `DatabaseWire`; an invocation carries opaque context and request
+  bytes whose meaning belongs to the application. Application-owned test
+  fixtures may select DatabaseWire without adding it to the host target.
 - Authentication principals, remote operations, durable server jobs, or schema
   administration. Those belong to `database-server`.
 - Query planning, index execution, graph traversal, transactions, or model
@@ -332,3 +333,69 @@ Change verification executes the exact WASM/Embedded reactor, real local
 Durable Object persistence/restart, checkpoint rollback, ordered/empty result
 metadata, resource limits, cancellation, and shutdown. Compile/link and
 TypeScript mocks alone are not this host's behavioral evidence.
+
+### S17 Application-Owned SQL Invocation
+
+The application-owned native and reactor fixtures consume
+[SQLExecuteOperation](../database-kit/Sources/DatabaseWire/DESIGN.md#s17-sql-operation-contract-draft)
+through a test-only `DatabaseWire` dependency and the
+[Database facade](../database-framework/Sources/Database/DESIGN.md)
+through a test-only `Database` product dependency. The facade supplies SQL text
+parsing and source diagnostics; the fixture does not reproduce them. These
+dependencies belong to the two existing test fixture targets only. They decode one complete
+request, create the existing authorized Framework context, and invoke the
+Framework SQL block boundary once. Request interpretation, principal selection,
+SQL parsing, result projection, and diagnostic encoding stay outside
+`CloudflareDatabase` and its TypeScript host. No fixture depends on Server's
+internal targets or products.
+
+```text
+opaque host invocation
+    -> application: decode SQLExecuteOperation, choose frame limit
+    -> Framework: execute one text, statement, or block request
+    -> application: borrow provisional outcomes; measure, reserve, frame
+         failure -> Framework rollback and authoritative cleanup
+         success -> Framework commit, cleanup, cancellation check
+    -> application: consume Ready frame owner
+    -> opaque host completion
+```
+
+The application selects a complete Wire frame cap no greater than the host's
+`maximumResponseBytes`. The frame is measured, reserved, and encoded while
+Framework still owns the provisional result. Borrowed rows, values, and views
+do not escape that synchronous projection. The prepared response owner escapes
+only after Framework establishes Ready; the application then returns its owned
+bytes without re-execution or re-encoding. Failure during projection aborts the
+whole request before commit. The host's existing post-response byte check is
+an independent transport guard and cannot establish SQL rollback.
+
+Ordered rows retain positional typed columns, duplicate labels, and zero-row
+metadata. COPY bytes and command outcomes retain their order and affected-row
+counts. A failed SQL request returns a complete typed remote failure carrying
+Kit's strict SQLDiagnostic after rollback and cleanup; it returns no earlier
+successful outcomes. The application supplies no continuation or automatic
+retry. Existing FIFO, limits, cancellation, shutdown, and retained-byte
+ownership remain host contracts and use their existing behavioral coverage.
+Direct cancellation, including a direct `SQLExecutionFailure.underlyingError`,
+is rethrown to the host; a cleanup composite containing cancellation remains a
+typed failure. The application projection classifies the same closed known
+Wire resource-limit cases as Server before Framework attaches source locations,
+preserving the native cause and SQLSTATE 54000. Other Wire failures retain
+their original classification.
+
+| S17 application evidence | Scope and falsifiable behavior |
+|---|---|
+| `SQLApplicationSessionTests.orderedResultsThroughOpaqueInvocation` | One invocation returns ordered rows, COPY and commands with duplicate and empty result metadata preserved |
+| `SQLApplicationSessionTests.typedDiagnosticAndRollback` | Syntax and execution diagnostics survive as SQLDiagnostic; an earlier mutation in the failed block is absent |
+| `SQLApplicationSessionTests.frameRejectionRollsBackMutation` | A frame cap smaller than the complete result rejects projection and leaves its preceding mutation absent |
+| `SQLApplicationSessionTests.referenceReopenAfterShutdown` | Authoritative shutdown followed by a new runtime over the same reference storage reads the committed value |
+
+The native restart fixture uses the owned InMemory Durable Object client and
+proves reference reopen behavior only. S18 owns exact Swift 6.4.0 release and
+matching SDK reactor execution, a distinct reactor address space, and real
+workerd persistence/restart evidence. The application fixtures are reused
+there; native or mock success does not substitute for that gate. Historical
+feasibility scripts retain their recorded toolchain provenance and are not
+evidence for a different toolchain. Native host tests retain the existing
+pinned native toolchain. Exact native counts remain with the operating and
+harness owners.
