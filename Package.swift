@@ -117,21 +117,21 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/1amageek/database-types.git",
-            from: "26.0831.0"
+            revision: "ef1938fd73c1663664eba04df5baa6d5c6b6a306"
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.0905.0",
+            revision: "8b701a3ebca8fb8c170156e6a1642fb11a34ed7b",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.0831.1",
+            revision: "62a6d6f42815e53512b17e61beae229f0f808638",
             traits: databaseKitDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            from: "26.0905.0"
+            revision: "aaf6906f7ec7facbb348b93246fbe88f91c3abcb"
         ),
     ],
     targets: [
