@@ -68,5 +68,10 @@
   same `sql:graph` invocation without debug information, because graph-enabled
   Embedded debug builds do not terminate with Swift 6.4.0
   (swiftlang/swift#93133).
+- Run `scripts/verify-sql-conformance.sh` with the same Swift 6.4.0 release
+  and its `_wasm` and `_wasm-embedded` SDKs. It builds the measurement package
+  in `Verification/SQLConformance` for both lanes and requires every portable
+  SQL group from S05 through S17, including the reactor reopen checks, to
+  report its verified response.
 - Release verification uses URL dependencies only. A local package path may
   diagnose a failure but is not release evidence.

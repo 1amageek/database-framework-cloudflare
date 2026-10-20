@@ -312,6 +312,7 @@ DATABASE_CLOUDFLARE_TEST_TRAITS=MultiBase scripts/xcode-test-harness
 DATABASE_CLOUDFLARE_TEST_TRAITS=AllRuntimeFeatures scripts/xcode-test-harness
 sh scripts/verify-runtime-feasibility.sh
 sh scripts/verify-standard-wasm-graph.sh
+sh scripts/verify-sql-conformance.sh
 ```
 
 The Xcode harness copies the package into an isolated work root before selecting
@@ -326,7 +327,9 @@ Durable Object SQLite, and repeats the read after a workerd restart. It also
 enforces Worker size, address-space, startup, ownership, and platform adapter
 constraints. The standard WASM graph lane builds the same reactor for
 standard WASI with `GraphIndexes` on the Swift 6.4.0 release and verifies SQL
-`SPARQL()` rewriting and direct SPARQL through Durable Object SQLite.
+`SPARQL()` rewriting and direct SPARQL through Durable Object SQLite. The SQL
+conformance lanes build the separate `Verification/SQLConformance` measurement
+package for standard and Embedded WASI and run every portable SQL group.
 
 The complete responsibility and dependency decision is recorded in
 [ADR-0003](Docs/ADR-0003-framework-adapter-and-standalone-server-boundaries.md).
