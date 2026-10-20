@@ -3,11 +3,11 @@
 # Builds the runtime verification reactor for standard (non-Embedded) WASI
 # with GraphIndexes and executes it under the Node Durable Object host.
 #
-# Graph-enabled Embedded builds do not terminate with Swift 6.4.0 because of
-# swiftlang/swift#93133, so this lane owns graph runtime evidence until a
-# pinned 6.4.x release carries that fix. It is pinned to the Swift 6.4.0
-# release and its matching standard WASM SDK, separately from the Embedded
-# release gate in verify-runtime-feasibility.sh.
+# This lane owns standard WASI graph runtime evidence. The Embedded release
+# gate in verify-runtime-feasibility.sh runs the same sql:graph invocation
+# without debug information, because graph-enabled Embedded debug builds do
+# not terminate with Swift 6.4.0 (swiftlang/swift#93133). This lane is pinned
+# to the Swift 6.4.0 release and its matching standard WASM SDK.
 
 set -eu
 
@@ -37,20 +37,6 @@ if ! "$swift_executable" sdk list | grep -qx "$required_wasm_sdk"; then
     exit 1
 fi
 
-# Package.swift links swiftUnicodeDataTables for every WASI build. The
-# standard SDK ships that archive only beside its Embedded libraries.
-unicode_data_directory=
-for sdk_root in "$HOME/Library/org.swift.swiftpm/swift-sdks" "$HOME/.swiftpm/swift-sdks"; do
-    candidate="$sdk_root/$required_wasm_sdk.artifactbundle/$required_wasm_sdk/wasm32-unknown-wasip1/swift.xctoolchain/usr/lib/swift/embedded/wasm32-unknown-wasip1"
-    if [ -f "$candidate/libswiftUnicodeDataTables.a" ]; then
-        unicode_data_directory=$candidate
-        break
-    fi
-done
-if [ -z "$unicode_data_directory" ]; then
-    echo "libswiftUnicodeDataTables.a was not found in $required_wasm_sdk" >&2
-    exit 1
-fi
 if [ ! -x "$repository_root/Workers/CloudflareDatabaseRuntime/node_modules/.bin/tsx" ]; then
     echo "Run npm ci in Workers/CloudflareDatabaseRuntime first" >&2
     exit 1
@@ -73,8 +59,7 @@ printf '%s\n' "traits=GraphIndexes"
     --disable-default-traits \
     --traits GraphIndexes \
     --build-path "$build_path" \
-    --disable-index-store \
-    -Xlinker -L -Xlinker "$unicode_data_directory"
+    --disable-index-store
 
 if [ ! -f "$artifact" ]; then
     echo "The standard WASM reactor artifact was not produced" >&2

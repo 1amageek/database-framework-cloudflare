@@ -5,8 +5,7 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 swift_executable=${SWIFT_EXECUTABLE:-}
 swift_wasm_sdk=${SWIFT_EMBEDDED_WASM_SDK:-}
-required_snapshot=swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a
-required_swift_commit=424cae54c1a10da
+required_snapshot=swift-6.4.0-RELEASE
 required_wasm_sdk=${required_snapshot}_wasm-embedded
 runtime_traits=${DATABASE_RUNTIME_TRAITS:-AllRuntimeFeatures}
 build_path=${DATABASE_RUNTIME_BUILD_PATH:-"$repository_root/.build/release-gate"}
@@ -94,13 +93,6 @@ if ! "$swift_executable" -print-target-info | grep -q \
     echo "sdk=$swift_wasm_sdk" >&2
     exit 1
 fi
-swift_version=$($swift_executable --version)
-if ! printf '%s\n' "$swift_version" | grep -q \
-    "Swift $required_swift_commit"; then
-    echo "The release gate requires Swift compiler commit $required_swift_commit" >&2
-    printf '%s\n' "$swift_version" >&2
-    exit 1
-fi
 if ! command -v wasm-opt >/dev/null 2>&1; then
     echo "wasm-opt is required for the Cloudflare feasibility gate" >&2
     exit 1
@@ -155,6 +147,7 @@ for required_product in \
     CloudflareDurableObjectStorageHostTransport \
     CloudflareDatabaseTaskScheduling \
     DatabaseMath \
+    QueryAST \
     DatabaseEngine \
     DatabaseRuntime \
     CloudflareDatabase
@@ -269,7 +262,6 @@ for forbidden_product in \
     DatabaseServerRuntime \
     DatabaseServerFoundation \
     DatabaseServerHost \
-    QueryAST \
     FDBStorage \
     SQLiteStorage \
     PostgreSQLStorage

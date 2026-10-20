@@ -53,8 +53,9 @@
 - Run `node scripts/verify-service-adapter.mjs` and require generated Wrangler
   binding types, TypeScript checking, and the complete dry-run deployment-size
   gate to pass from a rendered isolated service workspace.
-- Run `scripts/verify-runtime-feasibility.sh` with the fixed
-  `swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm-embedded` SDK. The gate
+- Run `scripts/verify-runtime-feasibility.sh` with the fixed Swift 6.4.0
+  release toolchain and its `swift-6.4.0-RELEASE_wasm-embedded` SDK, the same
+  pair `Adapter/sweb.json` uses for deployed reactors. The gate
   must compile and link every selected runtime product, reject forbidden host
   adapters, verify the reactor ABI, enforce artifact and address-space limits,
   instantiate the reactor, and complete the workerd restart-persistence smoke
@@ -63,8 +64,9 @@
   release toolchain and its matching `swift-6.4.0-RELEASE_wasm` SDK. It builds
   the verification reactor for standard WASI with only `GraphIndexes` and
   requires the `sql:graph` invocation to report five verified SQL/SPARQL cases.
-  This lane owns graph runtime evidence because graph-enabled Embedded builds
-  do not terminate with Swift 6.4.0 (swiftlang/swift#93133); it does not
-  replace the Embedded feasibility gate.
+  It owns standard WASI graph evidence; the Embedded feasibility gate runs the
+  same `sql:graph` invocation without debug information, because graph-enabled
+  Embedded debug builds do not terminate with Swift 6.4.0
+  (swiftlang/swift#93133).
 - Release verification uses URL dependencies only. A local package path may
   diagnose a failure but is not release evidence.

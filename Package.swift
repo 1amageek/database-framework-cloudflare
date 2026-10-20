@@ -3,11 +3,11 @@ import Foundation
 import PackageDescription
 
 // The Embedded WASI SDK ships Unicode tables outside the default linker search
-// path. Resolve the archive from the fixed Swift 6.4 SDK so every reactor
+// path. Resolve the archive from the fixed Swift 6.4.0 SDK so every reactor
 // build links the same standard-library support without adding it to the
 // runtime dependency graph.
 let unicodeDataArchiveDirectory: String? = {
-    let snapshot = "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm"
+    let snapshot = "swift-6.4.0-RELEASE_wasm"
     let relativePath = "\(snapshot).artifactbundle/\(snapshot)/wasm32-unknown-wasip1/swift.xctoolchain/usr/lib/swift/embedded/wasm32-unknown-wasip1"
     let fileManager = FileManager.default
     let userHomeDirectory = fileManager.homeDirectoryForCurrentUser
@@ -121,7 +121,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            revision: "8b701a3ebca8fb8c170156e6a1642fb11a34ed7b",
+            revision: "91206aba11cad3b57401d0d66d5e34e8c610b6a9",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(

@@ -29,9 +29,9 @@
         "cloudflare.databaseID": "application",
         "cloudflare.maximumCompressedWorkerBytes": "3145728",
         "cloudflare.workerName": "cloudflare-database",
-        "swiftSDK": "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a_wasm-embedded",
-        "swiftSnapshot": "swift-6.4.x-DEVELOPMENT-SNAPSHOT-2026-08-14-a",
-        "swiftToolchain": "org.swift.64202608141a"
+        "swiftSDK": "swift-6.4.0-RELEASE_wasm-embedded",
+        "swiftSnapshot": "swift-6.4.0-RELEASE",
+        "swiftToolchain": "org.swift.640202609131a"
       },
       "operations": {
         "prepare": [

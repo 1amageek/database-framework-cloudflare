@@ -14,7 +14,7 @@ enum SQLApplicationVerification {
             """).get()
         guard result.results.count == 4,
               case .command(.insert, let inserted) = result.results[0], inserted == 1,
-              case .rows(let rows) = result.results[1], rows.columns.map(\.name) == ["value", "value"],
+              case .rows(let rows) = result.results[1], rows.columns.map({ $0.name }) == ["value", "value"],
               case .rows(let empty) = result.results[2], empty.rowCount == 0,
               empty.columns.count == 1, empty.columns[0].type == .primitive(.string, isArray: false),
               case .copy(let bytes, let count) = result.results[3], count == 1,
