@@ -62,23 +62,23 @@ let package = Package(
         .package(path: "../.."),
         .package(
             url: "https://github.com/1amageek/database-types.git",
-            revision: "ef1938fd73c1663664eba04df5baa6d5c6b6a306"
+            from: "26.1021.0"
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            revision: "418a768451380138a4b722d09d35ee480feb65ae"
+            from: "26.1021.0"
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            revision: "62a6d6f42815e53512b17e61beae229f0f808638"
+            from: "26.1021.0"
         ),
         .package(
             url: "https://github.com/1amageek/storage-kit.git",
-            revision: "aaf6906f7ec7facbb348b93246fbe88f91c3abcb"
+            from: "26.1021.0"
         ),
         .package(
             url: "https://github.com/1amageek/database-client.git",
-            revision: "e97d6fc027dbc51d57032694087e3cc00fefffe5"
+            from: "26.1021.0"
         ),
     ],
     targets: [
