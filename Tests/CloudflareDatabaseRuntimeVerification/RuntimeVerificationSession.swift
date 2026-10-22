@@ -69,7 +69,7 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             #endif
             if request == "sql:preparation" {
                 try await SQLPreparationVerification.verify(in: context, restricted: restricted)
-                return Self.bytes("sql:preparation:verified:cases=8")
+                return Self.bytes("sql:preparation:verified:cases=9")
             }
             try await SQLExecutionOptimizationVerification.verify(in: context, restricted: restricted)
             return Self.bytes("sql:optimization:verified:cases=14")

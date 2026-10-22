@@ -118,7 +118,7 @@ async function verifyRuntime(): Promise<void> {
   }
   for (const [request, expected] of [
     ["sql:optimization", "sql:optimization:verified:cases=14"],
-    ["sql:preparation", "sql:preparation:verified:cases=8"],
+    ["sql:preparation", "sql:preparation:verified:cases=9"],
   ] as const) {
     assertTextResponse(await invokeApplication(connection, request), expected, request);
   }
@@ -152,7 +152,7 @@ async function verifyRuntime(): Promise<void> {
     vectorLifecycle: includesVectorIndexes,
     graphDatabaseCases: includesGraphIndexes ? 5 : 0,
     sqlOptimizationCases: 14,
-    sqlPreparationCases: 8,
+    sqlPreparationCases: 9,
     postFailureInvocation: true,
     alarmInvocation: true,
     scheduledAlarmTimestampMilliseconds: scheduledAlarmTimestamps[0],

@@ -106,6 +106,53 @@ enum SQLPreparationVerification {
             options: blockOptions(budget: ExecutionBudget(maximumRows: 100))), count: 100)
         try await requireValues(context, sql: "SELECT COUNT(*),MAX(n) FROM preparation_budget",
             expected: [[.primitive(.int64(100)), .primitive(.int32(99))]])
+        try await verifySnapshotSharing(in: context)
+    }
+
+    private static func verifySnapshotSharing(in context: DatabaseContext) async throws {
+        let options = try blockOptions()
+        _ = try await context.executeSQLBlock("CREATE TABLE preparation_snapshot_source(n INTEGER); CREATE TABLE preparation_snapshot_target(n INTEGER); CREATE TABLE preparation_snapshot_anchor(n INTEGER)", options: options)
+        let values = (1...100).map { "(\($0))" }.joined(separator: ",")
+        _ = try await context.executeSQLBlock("INSERT INTO preparation_snapshot_source VALUES " + values, options: options)
+        _ = try await context.executeSQLBlock("INSERT INTO preparation_snapshot_anchor VALUES (10)", options: options)
+        let definitions = (0..<8).map {
+            "c\($0) AS (INSERT INTO preparation_snapshot_target VALUES ((SELECT n FROM preparation_snapshot_source ORDER BY n LIMIT 1)) RETURNING n)"
+        }.joined(separator: ",")
+        let prefix = "WITH " + definitions + " INSERT INTO preparation_snapshot_target VALUES "
+        let budget = ExecutionBudget(maximumIntermediateRows: 1000)
+        _ = try await context.executeSQLBlock(prefix + "(7)", options: blockOptions(budget: budget))
+        try await requireValues(context, sql: "SELECT COUNT(*),SUM(n) FROM preparation_snapshot_target",
+            expected: [[.primitive(.int64(9)), .primitive(.int64(15))]])
+        _ = try await context.executeSQLBlock("DELETE FROM preparation_snapshot_target", options: options)
+        do {
+            _ = try await context.executeSQLBlock(prefix + "(7)",
+                options: blockOptions(budget: ExecutionBudget(maximumIntermediateRows: 500)))
+            throw RuntimeVerificationError.graphAssertion("snapshot-row-rejection-required")
+        } catch let failure as SQLExecutionFailure {
+            guard failure.diagnostic.sqlState == "54000", failure.diagnostic.category == .resource else { throw failure }
+        }
+        try await requireValues(context, sql: "SELECT COUNT(*) FROM preparation_snapshot_target", expected: [[.primitive(.int64(0))]])
+        do {
+            _ = try await context.executeSQLBlock(prefix + "(1 / 0)", options: blockOptions(budget: budget))
+            throw RuntimeVerificationError.graphAssertion("snapshot-late-rejection-required")
+        } catch let failure as SQLExecutionFailure {
+            guard failure.diagnostic.sqlState == "22012" else { throw failure }
+        }
+        try await requireValues(context, sql: "SELECT COUNT(*) FROM preparation_snapshot_target", expected: [[.primitive(.int64(0))]])
+        _ = try await context.executeSQLBlock(prefix + "(7)", options: blockOptions(budget: budget))
+        try await requireValues(context, sql: "SELECT COUNT(*) FROM preparation_snapshot_target", expected: [[.primitive(.int64(9))]])
+        _ = try await context.executeSQLBlock("DELETE FROM preparation_snapshot_target", options: options)
+        for local in [false, true] {
+            let nested = local ? "WITH preparation_snapshot_source AS (SELECT 2 AS n) " : ""
+            let scalar = "(" + nested + "SELECT a.n + (SELECT n FROM preparation_snapshot_source ORDER BY n LIMIT 1) FROM preparation_snapshot_anchor a LIMIT 1)"
+            let sql = "WITH before_shadow AS (INSERT INTO preparation_snapshot_target VALUES (" + scalar + ") RETURNING n), preparation_snapshot_source AS (SELECT 100 AS n), after_shadow AS (INSERT INTO preparation_snapshot_target VALUES (" + scalar + ") RETURNING n) INSERT INTO preparation_snapshot_target VALUES (0)"
+            _ = try await context.executeSQLBlock(sql, options: options)
+            let first: Int32 = local ? 12 : 11
+            let last: Int32 = local ? 12 : 110
+            try await requireValues(context, sql: "SELECT n FROM preparation_snapshot_target ORDER BY n",
+                expected: [[.primitive(.int32(0))], [.primitive(.int32(first))], [.primitive(.int32(last))]])
+            _ = try await context.executeSQLBlock("DELETE FROM preparation_snapshot_target", options: options)
+        }
     }
 
     private static func blockOptions(budget: ExecutionBudget = ExecutionBudget()) throws -> SQLBlockExecutionOptions {
