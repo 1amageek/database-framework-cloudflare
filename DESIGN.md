@@ -71,7 +71,7 @@ It does not own:
 | Design | Relationship | Contract Used | Summary | Cautions |
 |---|---|---|---|---|
 | [Database workspace](../DESIGN.md) | parent | system index and semantic plane assignment | Places this package as a host adaptation of the data plane. | It is not a control-and-publication owner and never appears as a peer of `database-server`. |
-| [database-framework](../database-framework/DESIGN.md) | depends on | `DatabaseEngine` container, session, schema, and runtime configuration | Supplies the only in-process data execution authority used here. | The dependency is pinned exactly; a Framework contract change requires re-verifying the reactor graph before the pin moves. |
+| [database-framework](../database-framework/DESIGN.md) | depends on | `DatabaseEngine` container, session, schema, and runtime configuration | Supplies the only in-process data execution authority used here. | Released adapters use a release range and record the exact resolved version/revision; a Framework contract change requires re-verifying the reactor graph before the dependency moves. |
 | [database-kit](../database-kit/DESIGN.md) | depends on | model, schema, and Foundation-independent declarations | Supplies the declarations an application schema is written against. | The `MultiBase` trait is forwarded, never enabled here by default. |
 | [database-types](../database-types/AGENTS.md) | depends on | `ByteString` and primitive value ownership | Supplies the byte ownership used for opaque payloads. | A borrowed WASM view must be copied once into an owned payload before it escapes the host call. |
 | [storage-kit](../storage-kit/DESIGN.md) | depends on | `CloudflareDurableObjectStorage`, its wire encoding, and its synchronous host transport | Supplies the Durable Object storage engine and its host bridge. | Storage limits are validated here before use; storage semantics are not reinterpreted. |
@@ -293,7 +293,9 @@ Change impact:
 - A change to the `database-framework` contract invalidates the resolved
   dependency evidence. A revision requirement may select an unreleased fix;
   it must pass the selected reactor and native trait graphs using URL
-  dependencies before the adapter change is complete.
+  dependencies before the adapter change is complete. Before a release tag,
+  replace an unreleased revision requirement with its published release range
+  and verify that the release graph selects the intended source revision.
 - A change to the adapter boundary — for example depending on a server product,
   interpreting DatabaseWire, or adding a backend choice — contradicts ADR-0003
   and requires superseding that decision before implementation.

@@ -66,7 +66,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.1021.0"
+            from: "26.1022.0"
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",

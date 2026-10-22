@@ -1,6 +1,6 @@
 {
   "name": "@database-framework-cloudflare/cloudflare-database-runtime",
-  "version": "26.819.0",
+  "version": "26.1022.0",
   "description": "Cloudflare Durable Object host runtime for database-framework Embedded WASM applications.",
   "license": "MIT",
   "type": "module",
