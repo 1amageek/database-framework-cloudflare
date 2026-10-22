@@ -104,7 +104,12 @@ final class RuntimeVerificationApplication:
                 ),
                 entityRuntimes: entityRuntimes,
                 authorizationPolicies: authorizationPolicies,
-                indexConfigurations: indexConfigurations
+                indexConfigurations: indexConfigurations,
+                sqlAuthorizationPolicyFactory: { entity, _, _ in
+                    AuthorizationPolicyHandler(schemaDriven: entity) { _, authorization in
+                        authorization.principal?.identifier == "runtime-verification"
+                    }
+                }
             )
             #if CLOUDFLARE_RUNTIME_MULTI_BASE
             let configuration = CloudflareDatabaseConfiguration(

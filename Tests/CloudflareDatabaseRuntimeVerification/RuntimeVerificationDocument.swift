@@ -58,4 +58,15 @@ extension RuntimeVerificationSecurityPolicy {
     }
 }
 
-extension RuntimeVerificationDocument: RuntimeVerificationSecurityPolicy {}
+extension RuntimeVerificationDocument: RuntimeVerificationSecurityPolicy {
+    static func permitsQuery(
+        _ query: borrowing SecurityQuery,
+        in context: borrowing AuthorizationContext
+    ) -> Bool {
+        guard context.principal?.identifier == "runtime-verification" else {
+            return false
+        }
+        return !(context.principal?.roles.contains("deny-title-order") == true
+            && query.orderBy?.contains("title") == true)
+    }
+}

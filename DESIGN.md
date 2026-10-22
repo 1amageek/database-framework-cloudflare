@@ -271,11 +271,19 @@ falsifies it.
 | the reactor graph excludes server and unselected features | reactor link verification with `DatabaseServerRuntime.o` and the server operation and host objects in the forbidden-object list |
 | the reactor builds and runs on the pinned Embedded WASM SDK | `scripts/verify-runtime-feasibility.sh` with the matching `_wasm-embedded` SDK |
 | portable SQL semantics S05 through S17 hold in standard and Embedded reactors, including reopen restoration | `scripts/verify-sql-conformance.sh` over the `Verification/SQLConformance` measurement package, which stays outside the release package graph |
+| SQL preparation remains bounded without per-expression scheduling workarounds; lexical names, ordering authority, one budget and atomic failure remain intact | The versioned `SQLPreparationVerification` and `SQLExecutionOptimizationVerification` fixtures run through `sql:preparation` and `sql:optimization` in both reactor instantiation gates, with unchanged stack settings. Fixtures require exact values, typed failures, rollback and subsequent successful work before returning their verified responses. |
 | graph-enabled SQL `SPARQL()` rewriting, direct SPARQL, typed producer positions, structural-limit rejection and post-failure reuse hold in the reactor | `scripts/verify-standard-wasm-graph.sh` (standard WASI, Swift 6.4.0 release) and `scripts/verify-runtime-feasibility.sh` (Embedded WASI without debug information, Swift 6.4.0 release), both through the `sql:graph` invocation; graph-enabled Embedded debug builds do not terminate before a 6.4.x release containing swiftlang/swift#93133 |
 | lifecycle, admission, and payload ownership hold | native test graph run through `scripts/xcode-test-harness` per trait set, with no reuse of DerivedData across trait graphs |
 | Cloudflare rejects unsupported index policies | the vector capability-admission contracts present only in the `AllRuntimeFeatures` graph |
 | `MultiBase` topology and layout validation hold | the `MultiBase` trait graph, which adds the storage layout contracts |
 | the host side upholds DO lifecycle, FIFO, and correlation | `npm test` in `Workers/CloudflareDatabaseRuntime` and `node scripts/verify-service-adapter.mjs` |
+
+The verification executable owns its application schema and policies. Its
+`deny-title-order` principal may read document payloads but cannot order by
+`title`; public local function columns must remain usable. SQL-created fixture
+tables admit only the verification principal through the explicit schema
+policy factory. Neither policy is part of the shipped adapter product, and
+the persisted document fields, directory and identity remain unchanged.
 
 Change impact:
 
@@ -283,8 +291,9 @@ Change impact:
   invalidates both the Swift and the TypeScript evidence and requires a
   coordinated host change.
 - A change to the `database-framework` contract invalidates the resolved
-  release. The requirement's lower bound moves only after the reactor graph and
-  the trait matrices are re-verified against the new release.
+  dependency evidence. A revision requirement may select an unreleased fix;
+  it must pass the selected reactor and native trait graphs using URL
+  dependencies before the adapter change is complete.
 - A change to the adapter boundary — for example depending on a server product,
   interpreting DatabaseWire, or adding a backend choice — contradicts ADR-0003
   and requires superseding that decision before implementation.

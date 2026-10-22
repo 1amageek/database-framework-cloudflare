@@ -116,6 +116,14 @@ async function verifyRuntime(): Promise<void> {
       "graph SQL and SPARQL"
     );
   }
+  for (const [request, expected] of [
+    ["sql:optimization", "sql:optimization:verified:cases=14"],
+    ["sql:preparation", "sql:preparation:verified:cases=8"],
+  ] as const) {
+    assertTextResponse(await invokeApplication(connection, request), expected, request);
+  }
+  // A separate invocation must remain usable after the SQL failure fixtures.
+  assertTextResponse(await invokeApplication(connection, "get"), "Cloudflare runtime", "post-SQL read");
   await connection.alarm();
   const expectedAlarmTimestampMilliseconds = 4_102_444_800_000;
   if (scheduledAlarmTimestamps.length !== 1
@@ -143,6 +151,9 @@ async function verifyRuntime(): Promise<void> {
     echoResponseBytes: echoResponse.byteLength,
     vectorLifecycle: includesVectorIndexes,
     graphDatabaseCases: includesGraphIndexes ? 5 : 0,
+    sqlOptimizationCases: 14,
+    sqlPreparationCases: 8,
+    postFailureInvocation: true,
     alarmInvocation: true,
     scheduledAlarmTimestampMilliseconds: scheduledAlarmTimestamps[0],
     compilationMilliseconds,

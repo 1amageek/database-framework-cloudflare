@@ -121,7 +121,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.1021.0",
+            revision: "4a6e3719c29fe2245e4f97b693a8c331df4d7b52",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(

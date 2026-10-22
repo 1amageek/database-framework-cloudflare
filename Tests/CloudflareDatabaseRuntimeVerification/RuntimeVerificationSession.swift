@@ -56,6 +56,24 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             return Self.bytes("sql:graph:verified:cases=5")
         }
         #endif
+        if request == "sql:preparation" || request == "sql:optimization" {
+            let restrictedAuthorization = AuthorizationContext.authenticated(
+                Principal(identifier: Self.principalIdentifier, roles: ["deny-title-order"])
+            )
+            let restricted: DatabaseContext
+            #if CLOUDFLARE_RUNTIME_MULTI_BASE
+            restricted = container.session(authorization: restrictedAuthorization)
+                .base(baseID).newContext()
+            #else
+            restricted = container.newContext(authorization: restrictedAuthorization)
+            #endif
+            if request == "sql:preparation" {
+                try await SQLPreparationVerification.verify(in: context, restricted: restricted)
+                return Self.bytes("sql:preparation:verified:cases=8")
+            }
+            try await SQLExecutionOptimizationVerification.verify(in: context, restricted: restricted)
+            return Self.bytes("sql:optimization:verified:cases=14")
+        }
         if request == "sql:s17" {
             try await SQLApplicationVerification.verify(session: self)
             return Self.bytes("sql:s17:verified")
