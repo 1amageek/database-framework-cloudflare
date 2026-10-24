@@ -121,12 +121,12 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/1amageek/database-framework.git",
-            from: "26.1022.0",
+            revision: "4fe236dc47d7d7ded0921caafb3d7e317d81b504",
             traits: databaseFrameworkDependencyTraits
         ),
         .package(
             url: "https://github.com/1amageek/database-kit.git",
-            from: "26.1021.0",
+            revision: "b325109676a4b9b3431e2e306ca8c0dcf1d9a7bf",
             traits: databaseKitDependencyTraits
         ),
         .package(
@@ -176,6 +176,7 @@ let package = Package(
                 .product(name: "DatabaseKit", package: "database-kit"),
                 .product(name: "DatabaseEngine", package: "database-framework"),
                 .product(name: "DatabaseRuntime", package: "database-framework"),
+                .product(name: "QueryAST", package: "database-framework"),
                 .product(
                     name: "VectorIndex",
                     package: "database-framework",

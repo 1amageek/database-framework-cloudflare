@@ -264,6 +264,9 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
                     case .invalidSettingValue(_): detail = "sql-block:invalidSettingValue"
                     case .statementTimeout: detail = "sql-block:statementTimeout"
                     case .unsupportedStatement: detail = "sql-block:unsupportedStatement"
+                    case .unsupportedPagedQuery: detail = "sql-block:unsupportedPagedQuery"
+                    case .enclosingTransaction: detail = "sql-block:enclosingTransaction"
+                    case .executionLimitOutOfRange(let limit): detail = "sql-block:executionLimitOutOfRange:" + String(limit)
                     case .mutationLimitOutOfRange(let limit): detail = "sql-block:mutationLimitOutOfRange:" + String(limit)
                     }
                 } else if let cause = failure.cause as? SQLCatalogBindingError {

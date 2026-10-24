@@ -56,7 +56,7 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             return Self.bytes("sql:graph:verified:cases=5")
         }
         #endif
-        if request == "sql:preparation" || request == "sql:optimization" {
+        if request == "sql:preparation" || request == "sql:optimization" || request == "query:unified" {
             let restrictedAuthorization = AuthorizationContext.authenticated(
                 Principal(identifier: Self.principalIdentifier, roles: ["deny-title-order"])
             )
@@ -67,6 +67,10 @@ actor RuntimeVerificationSession: CloudflareDatabaseSession {
             #else
             restricted = container.newContext(authorization: restrictedAuthorization)
             #endif
+            if request == "query:unified" {
+                try await QueryExecutionVerification.verify(in: context, restricted: restricted)
+                return Self.bytes("query:unified:verified:cases=6")
+            }
             if request == "sql:preparation" {
                 try await SQLPreparationVerification.verify(in: context, restricted: restricted)
                 return Self.bytes("sql:preparation:verified:cases=9")

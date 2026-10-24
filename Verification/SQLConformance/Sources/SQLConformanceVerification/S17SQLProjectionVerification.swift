@@ -1,3 +1,4 @@
+@_spi(DatabaseExecution) import Database
 @_spi(DatabaseExecution) @testable import DatabaseEngine
 import DatabaseClient
 import DatabaseKit
@@ -24,7 +25,7 @@ enum S17SQLProjectionVerification {
         print("ENGINE_S17_CLIENT_CASE opaque-correlation BEGIN")
         try await opaqueCorrelation(context)
         print("ENGINE_S17_CLIENT_CASE opaque-correlation PASS")
-        print("ENGINE_S17_PASS engine=2 wire=1 client=1 owner=DatabaseEngine.SQLBlockExecutor promotion=SQLEncodedResponse.Mutex")
+        print("ENGINE_S17_PASS engine=2 wire=1 client=1 owner=DatabaseEngine.SQLBlockExecutor promotion=EncodedQueryResponse.Mutex")
     }
 
     private static func projectionReady(_ context: DatabaseContext, _ container: DBContainer) async throws {
@@ -38,7 +39,7 @@ enum S17SQLProjectionVerification {
         let meter = DatabaseWorkMeter(budget: ExecutionBudget(), monotonicClock: container.monotonicClock)
         let probe = ProjectionProbe()
         let response = try await encoded(context, container, block, meter: meter,
-            encoder: ObservedEncoder(base: .init(requestID: 1701, encoder: DatabaseWireEncoder()), probe: probe))
+            encoder: ObservedEncoder(base: .init(requestID: 1701, limits: .default), probe: probe))
         try require(probe.measurements == 1 && probe.encodings == 1, "single-measure-and-encode")
         try require(meter.retainedIntermediateBytes == UInt64(response.byteCount), "ready-exact-frame-claim")
         // Both tasks retain the same concrete owner. The production Mutex must
@@ -69,7 +70,7 @@ enum S17SQLProjectionVerification {
             throw Failure.assertion("s17-promotion-missing-or-invalid-winner")
         }
         try require(meter.retainedIntermediateBytes == 0, "promotion-releases-frame-and-all-row-claims")
-        let decoded = try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.sqlExecute,
+        let decoded = try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.queryExecute,
             from: frame, matching: 1701).get()
         guard decoded.results.count == 4,
               case .command(.insert, 1) = decoded.results[0],
@@ -95,7 +96,7 @@ enum S17SQLProjectionVerification {
             let meter = DatabaseWorkMeter(budget: ExecutionBudget(), monotonicClock: container.monotonicClock)
             let probe = ProjectionProbe()
             let wire = DatabaseWireEncoder(limits: try limits(frame: mode == .wireLimit ? 1 : 100_000))
-            let encoder = ObservedEncoder(base: .init(requestID: 1702, encoder: wire), probe: probe, refusal: mode)
+            let encoder = ObservedEncoder(base: .init(requestID: 1702, limits: wire.limits), probe: probe, refusal: mode)
             if mode == .cancellation {
                 let task = Task {
                     do {
@@ -110,7 +111,8 @@ enum S17SQLProjectionVerification {
                     throw Failure.assertion("s17-refusal-returned-ready")
                 } catch let failure as SQLExecutionFailure {
                     guard mode == .wireLimit,
-                          case DatabaseWireError.frameTooLarge = failure.underlyingError else { throw failure }
+                          let cause = failure.underlyingError as? QueryResponseEncodingError,
+                          case .resourceLimit(.frameTooLarge) = cause else { throw failure }
                     try require(failure.diagnostic.sqlState == "54000" && failure.diagnostic.category == .resource,
                         "wire-measurement-native-limit")
                 } catch ProjectionFailure.encoding {
@@ -126,39 +128,60 @@ enum S17SQLProjectionVerification {
     }
 
     private static func scopedWriter() throws {
-        func project(_ writer: inout SQLResponseWriter) throws {
+        func project(_ writer: inout QueryResponseWriter) throws {
             try writer.writeCopy(bytes: ByteString([0, 255, 10]), affectedRows: 1)
         }
-        let size = try DatabaseWireEncoder().measureSQLResponse(requestID: 1703, resultCount: 1, body: project)
-        let exact = try limits(frame: size, depth: 2, objects: 3)
+        let size = try DatabaseWireEncoder().measureQueryResponse(requestID: 1703, resultCount: 1, body: project)
+        let exact = try limits(frame: size, depth: 1, objects: 1, collection: 0)
         let wire = DatabaseWireEncoder(limits: exact)
-        try require(try wire.measureSQLResponse(requestID: 1703, resultCount: 1, body: project) == size,
+        try require(try wire.measureQueryResponse(requestID: 1703, resultCount: 1, body: project) == size,
             "writer-exact-full-envelope-and-object-budget")
         let frame = try ByteString.copying(count: size) { destination in
-            try wire.encodeSQLResponse(requestID: 1703, resultCount: 1, into: destination, body: project)
+            try wire.encodeQueryResponse(requestID: 1703, resultCount: 1, into: destination, body: project)
         }
         guard case .success(let response) = try DatabaseWireDecoder(limits: exact).decodeResponse(
-            DatabaseOperationCatalog.sqlExecute, from: frame, matching: 1703),
+            DatabaseOperationCatalog.queryExecute, from: frame, matching: 1703),
               case .copy(let copy, 1) = response.results.first else { throw Failure.assertion("s17-scoped-writer-roundtrip") }
         try require(copy == ByteString([0, 255, 10]), "scoped-writer-exact-bytes")
-        for restrictive in [try limits(frame: size - 1), try limits(depth: 1), try limits(objects: 2),
-                            try limits(bytes: 2), try limits(collection: 0)] {
+        for restrictive in [try limits(frame: size - 1), try limits(depth: 0), try limits(objects: 0),
+                            try limits(bytes: 2)] {
             do {
-                _ = try DatabaseWireEncoder(limits: restrictive).measureSQLResponse(requestID: 1703, resultCount: 1, body: project)
+                _ = try DatabaseWireEncoder(limits: restrictive).measureQueryResponse(requestID: 1703, resultCount: 1, body: project)
                 throw Failure.assertion("s17-scoped-writer-limit-accepted")
             } catch is DatabaseWireError {}
             do {
-                _ = try DatabaseWireDecoder(limits: restrictive).decodeResponse(DatabaseOperationCatalog.sqlExecute,
+                _ = try DatabaseWireDecoder(limits: restrictive).decodeResponse(DatabaseOperationCatalog.queryExecute,
                     from: frame, matching: 1703)
                 throw Failure.assertion("s17-full-frame-decoder-limit-accepted")
             } catch is DatabaseWireError {}
         }
+        func projectBlock(_ writer: inout QueryResponseWriter) throws {
+            try project(&writer)
+            try project(&writer)
+        }
+        let blockSize = try DatabaseWireEncoder().measureQueryResponse(requestID: 1703, resultCount: 2, body: projectBlock)
+        let blockFrame = try ByteString.copying(count: blockSize) { destination in
+            try DatabaseWireEncoder().encodeQueryResponse(requestID: 1703, resultCount: 2,
+                into: destination, body: projectBlock)
+        }
+        for restrictive in [try limits(collection: 1), try limits(depth: 1), try limits(objects: 3)] {
+            do {
+                _ = try DatabaseWireEncoder(limits: restrictive).measureQueryResponse(requestID: 1703,
+                    resultCount: 2, body: projectBlock)
+                throw Failure.assertion("s17-block-writer-limit-accepted")
+            } catch is DatabaseWireError {}
+            do {
+                _ = try DatabaseWireDecoder(limits: restrictive).decodeResponse(DatabaseOperationCatalog.queryExecute,
+                    from: blockFrame, matching: 1703)
+                throw Failure.assertion("s17-block-decoder-limit-accepted")
+            } catch is DatabaseWireError {}
+        }
         do {
-            _ = try wire.measureSQLResponse(requestID: 1703, resultCount: 1) { _ in }
+            _ = try wire.measureQueryResponse(requestID: 1703, resultCount: 1) { _ in }
             throw Failure.assertion("s17-incomplete-writer-accepted")
         } catch DatabaseWireError.invalidSQLResponse {}
         do {
-            _ = try DatabaseWireEncoder().measureSQLResponse(requestID: 1703, resultCount: 1) { writer in
+            _ = try DatabaseWireEncoder().measureQueryResponse(requestID: 1703, resultCount: 1) { writer in
                 try writer.writeRows(columnCount: 0, rowCount: 0, affectedRows: nil) { _ in
                     throw ProjectionFailure.encoding
                 }
@@ -171,34 +194,37 @@ enum S17SQLProjectionVerification {
         let endpoint = OpaqueEndpoint(context: context)
         let transport = OpaqueTransport(endpoint: endpoint, mismatch: false)
         let client = DatabaseClient(transport: transport)
+        let connection = try await client.openConnection()
+        defer { await connection.close() }
         let statement = try SQLParser().parse("SELECT content FROM s17_projection WHERE id = 1")
-        let inputs: [SQLExecuteOperation.Input] = [.text("SELECT content FROM s17_projection WHERE id = 1"),
+        let inputs: [QueryInput] = [.sql("SELECT content FROM s17_projection WHERE id = 1"),
             .statement(statement), .block(try SQLBlock(steps: [.statement(statement)]))]
         for input in inputs {
-            let result = try await client.execute(DatabaseOperationCatalog.sqlExecute, request: .init(input: input))
+            let result = try await connection.execute(input)
             guard result.results.count == 1, case .rows(let rows) = result.results[0] else {
                 throw Failure.assertion("s17-client-complete-result")
             }
-            var iterator = rows.makeRowIterator()
-            try require(try iterator.next()?.values == [.primitive(.string("kept"))], "client-real-engine-value")
+            var iterator = rows.makeAsyncIterator()
+            try require(try await iterator.next()?.values == [.primitive(.string("kept"))], "client-real-engine-value")
         }
         do {
-            _ = try await client.execute(DatabaseOperationCatalog.sqlExecute,
-                request: .init(input: .text("SELECT 1 / 0")))
+            _ = try await connection.execute(SQL(text: "SELECT 1 / 0"))
             throw Failure.assertion("s17-client-native-diagnostic-became-success")
         } catch DatabaseClientError.call(.remote(let remote)) {
             try require(try remote.sqlDiagnostic()?.sqlState == "22012", "client-native-sqlstate")
         }
         let mismatch = DatabaseClient(transport: OpaqueTransport(endpoint: endpoint, mismatch: true))
+        let mismatchedConnection = try await mismatch.openConnection()
+        defer { await mismatchedConnection.close() }
         do {
-            _ = try await mismatch.execute(DatabaseOperationCatalog.sqlExecute, request: .init(input: .statement(statement)))
+            _ = try await mismatchedConnection.execute(statement)
             throw Failure.assertion("s17-client-mismatched-response-accepted")
         } catch DatabaseClientError.call(.wire(.unexpectedRequestIdentifier(expected: 1, actual: 2))) {}
         try require(await endpoint.requestCount == 5, "client-no-hidden-replay")
     }
 
     private static func encoded(_ context: DatabaseContext, _ container: DBContainer, _ block: SQLBlock,
-        meter: DatabaseWorkMeter, encoder: any SQLBlockResponseEncoder) async throws -> SQLEncodedResponse {
+        meter: DatabaseWorkMeter, encoder: any SQLBlockResponseEncoder) async throws -> EncodedQueryResponse {
         let budget = meter.budget
         return try await SQLBlockExecutor(context: context).executeEncoded(block,
             options: SQLBlockExecutionOptions(checkpointLimits: SQLCheckpointVerification.limits(), budget: budget),
@@ -239,7 +265,7 @@ enum S17SQLProjectionVerification {
     }
 
     private struct ObservedEncoder: SQLBlockResponseEncoder {
-        let base: SQLApplicationResponseEncoder
+        let base: QueryResponseEncoder
         let probe: ProjectionProbe
         var refusal: Refusal? = nil
         func measure(_ output: borrowing SQLBlockOutputView) throws -> UInt64 {
@@ -272,19 +298,14 @@ enum S17SQLProjectionVerification {
         init(context: DatabaseContext) { self.context = context }
         func respond(_ frame: ByteString, mismatch: Bool) async throws -> ByteString {
             requestCount += 1
-            let decoded = try DatabaseWireDecoder().decodeRequest(DatabaseOperationCatalog.sqlExecute, from: frame)
-            let block: SQLBlock
-            switch decoded.request.input {
-            case .text(let sql): block = try SQLParser().parseBlock(sql)
-            case .statement(let statement): block = try SQLBlock(steps: [.statement(statement)])
-            case .block(let supplied): block = supplied
-            }
+            let decoded = try DatabaseWireDecoder().decodeRequest(DatabaseOperationCatalog.queryExecute, from: frame)
             let wire = DatabaseWireEncoder()
             do {
-                let result = try await SQLBlockExecutor(context: context).executeEncoded(block,
+                let result = try await context.executeQueryEncoded(decoded.request.input,
                     parameters: decoded.request.parameters,
-                    options: SQLBlockExecutionOptions(checkpointLimits: SQLCheckpointVerification.limits(), budget: decoded.request.budget),
-                    encoder: SQLApplicationResponseEncoder(requestID: decoded.requestID + (mismatch ? 1 : 0), encoder: wire))
+                    options: .init(budget: decoded.request.budget, graphPartitions: decoded.request.graphPartitions),
+                    requestID: decoded.requestID + (mismatch ? 1 : 0),
+                    checkpointCeiling: SQLCheckpointVerification.limits())
                 return try result.promoteToOutput()
             } catch {
                 if error is CancellationError { throw error }
@@ -292,7 +313,7 @@ enum S17SQLProjectionVerification {
                 let remote = try RemoteOperationError(category: .invalidRequest, code: "s17.fixture.sql",
                     message: diagnostic.message, retryability: .never, sqlDiagnostic: diagnostic)
                 return try wire.encodeFailure(requestID: decoded.requestID,
-                    operation: DatabaseOperationCatalog.sqlExecute.identifier, error: remote)
+                    operation: DatabaseOperationCatalog.queryExecute.identifier, error: remote)
             }
         }
     }

@@ -1,5 +1,5 @@
 #if CLOUDFLARE_RUNTIME_GRAPH_INDEXES
-import Database
+@_spi(DatabaseExecution) import Database
 import DatabaseKit
 import DatabaseTypes
 

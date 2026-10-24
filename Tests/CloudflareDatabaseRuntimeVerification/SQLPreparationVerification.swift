@@ -1,4 +1,4 @@
-import Database
+@_spi(DatabaseExecution) import Database
 @_spi(DatabaseExecution) import DatabaseEngine
 import DatabaseKit
 

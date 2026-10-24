@@ -260,6 +260,17 @@ critical section.
 
 ## Verification and Change Impact
 
+The runtime verification application exercises canonical QueryInput and the
+Framework QueryConnection through the existing host executor, cancellable clock
+and Durable Object SQLite ABI. Its six unified-query groups cover text/IR/block
+typed equality, 100-row RETURNING and COPY, first-error rollback, zero budgets,
+original field authorization, and result/connection lifetime. Native SQLite
+ownership tests supplement the exact standard/Embedded reactor gates. A bare
+WASI command's default executor is not evidence for this host adapter.
+
+The SQL fixture protocol now carries `query.execute` and delegates complete
+projection to Framework; no independent application response encoder remains.
+
 Expected counts, the pinned toolchain, and the exact harness invocation are
 owned by [AGENTS.md](AGENTS.md). This table maps each invariant to the gate that
 falsifies it.
@@ -350,7 +361,7 @@ TypeScript mocks alone are not this host's behavioral evidence.
 ### S17 Application-Owned SQL Invocation
 
 The application-owned native and reactor fixtures consume
-[SQLExecuteOperation](../database-kit/Sources/DatabaseWire/DESIGN.md#s17-sql-operation-contract-draft)
+[QueryExecuteOperation](../database-kit/Sources/DatabaseWire/DESIGN.md#unified-query-result-carriage)
 through a test-only `DatabaseWire` dependency and the
 [Database facade](../database-framework/Sources/Database/DESIGN.md)
 through a test-only `Database` product dependency. The facade supplies SQL text
@@ -364,12 +375,12 @@ internal targets or products.
 
 ```text
 opaque host invocation
-    -> application: decode SQLExecuteOperation, choose frame limit
+    -> application: decode QueryExecuteOperation, choose frame limit
     -> Framework: execute one text, statement, or block request
-    -> application: borrow provisional outcomes; measure, reserve, frame
-         failure -> Framework rollback and authoritative cleanup
-         success -> Framework commit, cleanup, cancellation check
-    -> application: consume Ready frame owner
+         measure, reserve and encode the provisional result
+         failure -> rollback and authoritative cleanup
+         success -> commit, cleanup, cancellation check
+    -> application: consume the ready EncodedQueryResponse owner
     -> opaque host completion
 ```
 
@@ -391,10 +402,10 @@ retry. Existing FIFO, limits, cancellation, shutdown, and retained-byte
 ownership remain host contracts and use their existing behavioral coverage.
 Direct cancellation, including a direct `SQLExecutionFailure.underlyingError`,
 is rethrown to the host; a cleanup composite containing cancellation remains a
-typed failure. The application projection classifies the same closed known
-Wire resource-limit cases as Server before Framework attaches source locations,
-preserving the native cause and SQLSTATE 54000. Other Wire failures retain
-their original classification.
+typed failure. Framework owns common Wire resource-limit classification and
+source diagnostics; the fixture maps that typed outcome into its remote failure
+frame. SQL resource refusal retains SQLSTATE 54000 and its native cause. Other
+Wire failures retain their original classification.
 
 | S17 application evidence | Scope and falsifiable behavior |
 |---|---|

@@ -296,7 +296,7 @@ async function verifyRuntime(): Promise<void> {
     sqlS17ClientCases: includesS17 ? 1 : 0,
     sqlS17GraphFreeScope: includesS17,
     sqlS17Owner: includesS17 ? "DatabaseEngine.SQLBlockExecutor" : null,
-    sqlS17PromotionOwner: includesS17 ? "SQLEncodedResponse.Mutex" : null,
+    sqlS17PromotionOwner: includesS17 ? "EncodedQueryResponse.Mutex" : null,
     sqlS16Cases: includesS16 ? 9 : 0,
     sqlS16ExecutionCases: includesS16 ? 8 : 0,
     sqlS16RestartCases: includesS16 ? 1 : 0,

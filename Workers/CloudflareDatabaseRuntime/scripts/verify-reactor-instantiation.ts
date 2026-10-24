@@ -117,6 +117,7 @@ async function verifyRuntime(): Promise<void> {
     );
   }
   for (const [request, expected] of [
+    ["query:unified", "query:unified:verified:cases=6"],
     ["sql:optimization", "sql:optimization:verified:cases=14"],
     ["sql:preparation", "sql:preparation:verified:cases=9"],
   ] as const) {
@@ -151,6 +152,7 @@ async function verifyRuntime(): Promise<void> {
     echoResponseBytes: echoResponse.byteLength,
     vectorLifecycle: includesVectorIndexes,
     graphDatabaseCases: includesGraphIndexes ? 5 : 0,
+    unifiedQueryCases: 6,
     sqlOptimizationCases: 14,
     sqlPreparationCases: 9,
     postFailureInvocation: true,

@@ -56,18 +56,18 @@ enum SQLApplicationVerification {
     }
 
     private static func invoke(_ session: RuntimeVerificationSession, id: UInt64,
-        sql: String) async throws -> Result<SQLExecuteOperation.Response, RemoteOperationError> {
-        let request = SQLExecuteOperation.Request(input: .text(sql))
+        sql: String) async throws -> Result<QueryExecuteOperation.Response, RemoteOperationError> {
+        let request = QueryExecuteOperation.Request(input: .sql(sql))
         #if CLOUDFLARE_RUNTIME_MULTI_BASE
-        let bytes = try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.sqlExecute,
+        let bytes = try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.queryExecute,
             requestID: id, target: .base(try Base.ID("runtime-verification")), request: request)
         #else
-        let bytes = try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.sqlExecute,
+        let bytes = try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.queryExecute,
             requestID: id, request: request)
         #endif
         let response = try await session.respond(to: CloudflareDatabaseInvocation(
             context: ByteString(utf8: RuntimeVerificationSession.principalIdentifier + ":sql"), request: bytes))
-        return try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.sqlExecute,
+        return try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.queryExecute,
             from: response, matching: id)
     }
 }

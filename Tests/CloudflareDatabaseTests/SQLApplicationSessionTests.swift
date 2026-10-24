@@ -81,7 +81,7 @@ struct SQLApplicationSessionTests {
             diagnostic: SQLDiagnostics.diagnostic(for: cleanup))
         let cleanupBytes = try SQLApplicationInvocation.failureResponse(for: composite,
             requestID: 6, encoder: DatabaseWireEncoder())
-        let cleanupResponse = try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.sqlExecute,
+        let cleanupResponse = try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.queryExecute,
             from: cleanupBytes, matching: 6)
         guard case .failure(let cleanupFailure) = cleanupResponse else {
             Issue.record("Expected a typed cleanup failure rather than cancellation"); return
@@ -109,18 +109,6 @@ struct SQLApplicationSessionTests {
             sql: "SELECT title FROM \"RuntimeVerificationDocument\" WHERE id = 'oversize'").get()
         #expect(try rows(absent).rowCount == 0)
 
-        let wireLimit = DatabaseWireError.stringTooLarge(actual: 1_048_580, maximum: 1_048_576)
-        do {
-            try SQLApplicationResponseEncoder.throwResponseFailure(wireLimit)
-        } catch let failure as SQLExecutionFailure {
-            #expect(failure.underlyingError as? DatabaseWireError == wireLimit)
-            #expect(failure.diagnostic.sqlState == "54000")
-        }
-        do {
-            try SQLApplicationResponseEncoder.throwResponseFailure(.invalidSQLResponse)
-        } catch let failure as DatabaseWireError {
-            #expect(failure == .invalidSQLResponse)
-        }
         let stringLimit = try await invoke(fixture, callID: 4, sql: """
             INSERT INTO "RuntimeVerificationDocument" (id, title) VALUES ('string-limit', 'hidden');
             SELECT repeat('0123456789', 104858);
@@ -173,29 +161,29 @@ struct SQLApplicationSessionTests {
 
     private func invoke(_ fixture: Fixture, callID: UInt32, sql: String,
         parameters: [QueryParameter] = [], budget: ExecutionBudget = ExecutionBudget())
-        async throws -> Result<SQLExecuteOperation.Response, RemoteOperationError> {
+        async throws -> Result<QueryExecuteOperation.Response, RemoteOperationError> {
         let bytes = try requestBytes(callID: callID, sql: sql, parameters: parameters, budget: budget)
         await fixture.runtime.invoke(callID: callID,
             contextBytes: ByteString(utf8: RuntimeVerificationSession.principalIdentifier), requestBytes: bytes)
         let completion = try #require(fixture.completion.completion(callID: callID))
         #expect(completion.status == .success)
-        return try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.sqlExecute,
+        return try DatabaseWireDecoder().decodeResponse(DatabaseOperationCatalog.queryExecute,
             from: completion.payload, matching: UInt64(callID))
     }
 
     private func requestBytes(callID: UInt32, sql: String, parameters: [QueryParameter] = [],
         budget: ExecutionBudget = ExecutionBudget()) throws -> ByteString {
-        let request = SQLExecuteOperation.Request(input: .text(sql), parameters: parameters, budget: budget)
+        let request = QueryExecuteOperation.Request(input: .sql(sql), parameters: parameters, budget: budget)
         #if CLOUDFLARE_TEST_MULTI_BASE
-        return try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.sqlExecute,
+        return try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.queryExecute,
             requestID: UInt64(callID), target: .base(try Base.ID("runtime-verification")), request: request)
         #else
-        return try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.sqlExecute,
+        return try DatabaseWireEncoder().encodeRequest(DatabaseOperationCatalog.queryExecute,
             requestID: UInt64(callID), request: request)
         #endif
     }
 
-    private func rows(_ response: SQLExecuteOperation.Response) throws -> SQLExecuteOperation.Rows {
+    private func rows(_ response: QueryExecuteOperation.Response) throws -> QueryRowPage {
         guard response.results.count == 1, case .rows(let rows) = response.results[0] else {
             throw RuntimeVerificationError.invalidApplicationRequest
         }
